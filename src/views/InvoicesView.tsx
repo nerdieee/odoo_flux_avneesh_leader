@@ -421,7 +421,7 @@ export const InvoicesView: React.FC = () => {
               </span>
             </div>
             <p className="text-[11.5px] text-indigo-900 leading-relaxed">
-              Dispatched from: <strong className="font-mono text-indigo-950">{emailConfig?.sender_email || 'lolkumarold@gmail.com'}</strong>
+              Dispatched from: <strong className="font-mono text-indigo-950">{emailConfig?.sender_email || 'lolkumarold123@gmail.com'}</strong>
             </p>
           </div>
 

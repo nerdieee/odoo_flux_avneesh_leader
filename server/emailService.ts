@@ -10,7 +10,7 @@ export interface EmailConfig {
 }
 
 export function loadEmailConfig(): EmailConfig {
-  let user = 'lolkumarold@gmail.com';
+  let user = 'lolkumarold123@gmail.com';
   let pass = 'mizwwmwmxrqbkxbz';
   let receiver = 'yashchharra@gmail.com';
   let source = 'default';
