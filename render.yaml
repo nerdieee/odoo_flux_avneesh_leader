@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: brightloop-sms
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/dashboard
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+      - key: SMTP_USER
+        value: lolkumarold123@gmail.com
+      - key: SMTP_PASS
+        value: mizwwmwmxrqbkxbz
+      - key: INVOICE_RECEIVER_EMAIL
+        value: yashchharra@gmail.com
