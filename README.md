@@ -26,13 +26,18 @@ Open your browser at: **`http://localhost:3001`**
 
 ---
 
-## 👥 Built-in Personas & Test Credentials
+## 👥 User Roles & Authentication Architecture
 
-The application includes an instant **1-Click Persona Switcher** in the top navigation bar so you can test all views without logging out:
+The application enforces a strict role-based access control (RBAC) model:
 
-| Persona | Name | Email | Password | Role & Permissions |
+- **Single Dedicated Admin Account**: Full administrative governance. Only one administrator account exists in the platform (`admin@brightloop.com`).
+- **Invite-Only Staff Accounts**: Internal staff accounts cannot be created via public sign up. The Admin issues secure invitations (with unique token & expiry) from the Staff Management view. Staff candidates register using their invitation link/code and configure their own secure password.
+- **Customer Self-Registration**: Public signup without an invite code strictly provisions Customer accounts with corporate profile records (Billing address, GSTIN).
+
+### Test Accounts
+| Role | Name | Email | Password | Role & Permissions |
 | :--- | :--- | :--- | :--- | :--- |
-| 👑 **Admin** | Sarah Connor | `admin@brightloop.com` | `Brightloop@2026` | Full system control: catalog, taxes, discounts, staff, subscriptions, reports |
+| 👑 **Admin (Single)** | Administrator | `admin@brightloop.com` | `Brightloop@2026` | Full system control: catalog, taxes, discounts, staff invitations, reports |
 | 👔 **Internal Staff** | Alex Morgan | `staff@brightloop.com` | `Brightloop@2026` | Operational access: customers, quotations, subscriptions, invoices & payments |
 | 👤 **Customer** | Rajesh Patel (Acme Tech) | `customer@acme.com` | `Brightloop@2026` | Customer portal: view active subscriptions, view & print tax invoices, receipts |
 

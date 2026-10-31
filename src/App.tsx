@@ -13,12 +13,14 @@ import { ProductsView } from './views/ProductsView';
 import { PlansView } from './views/PlansView';
 import { DiscountsView } from './views/DiscountsView';
 import { TaxesView } from './views/TaxesView';
+import { SettingsView } from './views/SettingsView';
 import { CustomersView } from './views/CustomersView';
 import { StaffView } from './views/StaffView';
 import { CustomerPortalView } from './views/CustomerPortalView';
 import { AuthView } from './views/AuthView';
 import { LandingPageView } from './views/LandingPageView';
 import { InvoicePrintModal } from './components/InvoicePrintModal';
+import { ForcedPasswordChangeModal } from './components/ForcedPasswordChangeModal';
 import type { Invoice, User } from './types';
 
 interface DashboardLayoutProps {
@@ -84,7 +86,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user, onOpenLandingPa
       case 'discounts':
         return <DiscountsView />;
       case 'taxes':
-        return <TaxesView />;
+      case 'settings':
+        return <SettingsView />;
       case 'customers':
         return <CustomersView />;
       case 'staff':
@@ -133,12 +136,15 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user, onOpenLandingPa
         invoice={selectedInvoice}
         onClose={() => setSelectedInvoice(null)}
       />
+
+      {/* Mandatory First-Login Password Change Modal */}
+      <ForcedPasswordChangeModal />
     </div>
   );
 };
 
 const MainApp: React.FC = () => {
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const [guestView, setGuestView] = useState<'landing' | 'auth'>('landing');
   const [authTab, setAuthTab] = useState<'signin' | 'signup'>('signin');
   const [showLandingPageLoggedIn, setShowLandingPageLoggedIn] = useState(false);
@@ -153,7 +159,6 @@ const MainApp: React.FC = () => {
             setAuthTab(tab || 'signin');
             setGuestView('auth');
           }}
-          onQuickLogin={(email) => login(email, 'Brightloop@2026')}
           isLoggedIn={false}
         />
       );

@@ -27,13 +27,25 @@ export const CustomerPortalView: React.FC = () => {
   const fetchCustomerData = async () => {
     setLoading(true);
     try {
-      const custId = user?.customer_id || 1;
+      const custId = user?.customer_id;
+      if (!custId) {
+        setSubscriptions([]);
+        setInvoices([]);
+        setLoading(false);
+        return;
+      }
+      const headers: Record<string, string> = {
+        'x-user-role': user.role,
+        'x-customer-id': String(custId)
+      };
       const [sRes, iRes] = await Promise.all([
-        fetch(`/api/subscriptions?customer_id=${custId}`),
-        fetch(`/api/invoices?customer_id=${custId}`)
+        fetch(`/api/subscriptions?customer_id=${custId}`, { headers }),
+        fetch(`/api/invoices?customer_id=${custId}`, { headers })
       ]);
-      setSubscriptions(await sRes.json());
-      setInvoices(await iRes.json());
+      const subs = await sRes.json();
+      const invs = await iRes.json();
+      setSubscriptions(Array.isArray(subs) ? subs : []);
+      setInvoices(Array.isArray(invs) ? invs : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -62,7 +74,7 @@ export const CustomerPortalView: React.FC = () => {
               Welcome, {user?.name}
             </h1>
             <p className="mt-0.5 text-xs text-stone-500">
-              Account: <strong className="text-stone-800">{user?.company || 'Acme Technologies Ltd'}</strong> · GSTIN: <code className="font-mono text-stone-700">{user?.gst_number || '29ABCDE1234F1Z5'}</code>
+              Account: <strong className="text-stone-800">{user?.company || 'Personal Customer'}</strong> · GSTIN: <code className="font-mono text-stone-700">{user?.gst_number || 'N/A'}</code>
             </p>
           </div>
 

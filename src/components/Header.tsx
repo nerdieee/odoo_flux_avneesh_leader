@@ -16,7 +16,8 @@ import {
   Users,
   Menu,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Settings
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { cn } from '../utils/cn';
@@ -36,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMobileMenu,
   onOpenLandingPage
 }) => {
-  const { user, switchPersona, requestPasswordReset, resetPassword, logout } = useAuth();
+  const { user, requestPasswordReset, resetPassword, logout } = useAuth();
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
@@ -62,11 +63,6 @@ export const Header: React.FC<HeaderProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const handlePersonaSelect = (role: UserRole) => {
-    switchPersona(role);
-    setShowRoleMenu(false);
-  };
 
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,161 +169,87 @@ export const Header: React.FC<HeaderProps> = ({
               <span>SLA &lt; 2s (11.8ms)</span>
             </div>
 
-            {/* Persona Switcher Pill */}
+            {/* User Profile Pill & Account Menu */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowRoleMenu(!showRoleMenu)}
                 className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 transition shadow-2xs cursor-pointer"
               >
-                <span className="h-2 w-2 rounded-full bg-indigo-600" />
-                <span className="capitalize text-slate-900 text-[12px]">
-                  {user?.role}
+                <span className={cn(
+                  "h-2 w-2 rounded-full",
+                  user?.role === 'admin' ? "bg-amber-500" : user?.role === 'staff' ? "bg-blue-600" : "bg-emerald-500"
+                )} />
+                <span className="text-slate-900 text-[12px] font-semibold">
+                  {user?.role_name || user?.role}
                 </span>
-                <span className="hidden xl:inline text-slate-400 text-[11px] font-normal">
+                <span className="hidden xl:inline text-slate-500 text-[11px] font-normal">
                   · {user?.name}
                 </span>
                 <ChevronDown className="h-3 w-3 text-slate-400" />
               </button>
 
-              {/* Persona Switcher Dropdown */}
+              {/* User Account Menu Dropdown */}
               {showRoleMenu && (
                 <>
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => setShowRoleMenu(false)}
                   />
-                  <div className="absolute right-0 mt-2 w-72 origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3 py-2 border-b border-slate-100">
-                      <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-                        Test Role Switcher
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Switch accounts instantly to review RBAC
-                      </p>
-                    </div>
-
-                    <div className="mt-1 space-y-1">
-                      {/* Admin */}
-                      <button
-                        type="button"
-                        onClick={() => handlePersonaSelect('admin')}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition cursor-pointer',
+                  <div className="absolute right-0 mt-2 w-72 origin-top-right rounded-2xl border border-slate-200 bg-white p-3 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-1 py-1.5 border-b border-slate-100 mb-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className={cn(
+                          "h-9 w-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-xs",
                           user?.role === 'admin'
-                            ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold shadow-2xs'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <ShieldCheck
-                            className={cn(
-                              'h-4 w-4',
-                              user?.role === 'admin'
-                                ? 'text-white'
-                                : 'text-amber-500'
-                            )}
-                          />
-                          <div>
-                            <p className="font-semibold">Sarah Connor</p>
-                            <p
-                              className={cn(
-                                'text-[11px]',
-                                user?.role === 'admin'
-                                  ? 'text-amber-100'
-                                  : 'text-slate-400'
-                              )}
-                            >
-                              Admin · Full Platform Control
-                            </p>
-                          </div>
+                            ? "bg-gradient-to-tr from-amber-500 to-orange-500"
+                            : user?.role === 'staff'
+                            ? "bg-gradient-to-tr from-blue-600 to-indigo-600"
+                            : "bg-gradient-to-tr from-emerald-500 to-teal-600"
+                        )}>
+                          {user?.role === 'admin' ? <ShieldCheck className="h-4 w-4" /> : user?.role === 'staff' ? <UserCheck className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
                         </div>
-                        {user?.role === 'admin' && (
-                          <Check className="h-4 w-4 text-white" />
-                        )}
-                      </button>
-
-                      {/* Staff */}
-                      <button
-                        type="button"
-                        onClick={() => handlePersonaSelect('staff')}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition cursor-pointer',
-                          user?.role === 'staff'
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold shadow-2xs'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <UserCheck
-                            className={cn(
-                              'h-4 w-4',
-                              user?.role === 'staff'
-                                ? 'text-white'
-                                : 'text-blue-500'
-                            )}
-                          />
-                          <div>
-                            <p className="font-semibold">Alex Morgan</p>
-                            <p
-                              className={cn(
-                                'text-[11px]',
-                                user?.role === 'staff'
-                                  ? 'text-blue-100'
-                                  : 'text-slate-400'
-                              )}
-                            >
-                              Internal Staff · Sales &amp; Billing
-                            </p>
-                          </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-slate-900 text-xs truncate">{user?.name}</p>
+                          <p className="text-[11px] font-mono text-slate-400 truncate">{user?.email}</p>
                         </div>
-                        {user?.role === 'staff' && (
-                          <Check className="h-4 w-4 text-white" />
-                        )}
-                      </button>
-
-                      {/* Customer */}
-                      <button
-                        type="button"
-                        onClick={() => handlePersonaSelect('customer')}
-                        className={cn(
-                          'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition cursor-pointer',
-                          user?.role === 'customer'
-                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-semibold shadow-2xs'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Building2
-                            className={cn(
-                              'h-4 w-4',
-                              user?.role === 'customer'
-                                ? 'text-white'
-                                : 'text-emerald-500'
-                            )}
-                          />
-                          <div>
-                            <p className="font-semibold">Rajesh Patel</p>
-                            <p
-                              className={cn(
-                                'text-[11px]',
-                                user?.role === 'customer'
-                                  ? 'text-emerald-100'
-                                  : 'text-slate-400'
-                              )}
-                            >
-                              Customer · Acme Tech
-                            </p>
-                          </div>
+                      </div>
+                      <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-500">
+                        <span className="text-slate-400">Assigned Role</span>
+                        <span className="font-semibold text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                          {user?.role_name || user?.role}
+                        </span>
+                      </div>
+                      {user?.department && (
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="text-slate-400">Department</span>
+                          <span className="font-medium text-slate-700">{user.department}</span>
                         </div>
-                        {user?.role === 'customer' && (
-                          <Check className="h-4 w-4 text-white" />
-                        )}
-                      </button>
+                      )}
+                      {user?.company && (
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="text-slate-400">Organization</span>
+                          <span className="font-medium text-slate-700 truncate max-w-[150px]">{user.company}</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Reset Password & Sign Out Links */}
-                    <div className="mt-2 pt-2 border-t border-slate-100 space-y-0.5">
+                    {/* Settings, Reset Password & Sign Out Links */}
+                    <div className="space-y-1">
+                      {user?.role === 'admin' && onNavigateTab && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onNavigateTab('settings');
+                            setShowRoleMenu(false);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        >
+                          <Settings className="h-3.5 w-3.5 text-slate-400" />
+                          <span>Settings &amp; Tax %</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => {
@@ -335,7 +257,7 @@ export const Header: React.FC<HeaderProps> = ({
                           setShowResetModal(true);
                           setShowRoleMenu(false);
                         }}
-                        className="flex w-full items-center gap-2 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 cursor-pointer"
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 cursor-pointer"
                       >
                         <KeyRound className="h-3.5 w-3.5 text-slate-400" />
                         <span>Security Password Reset</span>
@@ -348,7 +270,7 @@ export const Header: React.FC<HeaderProps> = ({
                           setShowRoleMenu(false);
                           logout();
                         }}
-                        className="flex w-full items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer"
                       >
                         <LogOut className="h-3.5 w-3.5" />
                         <span>Sign Out Account</span>

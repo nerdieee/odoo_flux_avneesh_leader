@@ -9,7 +9,70 @@ export interface User {
   company?: string;
   phone?: string;
   gst_number?: string;
+  department?: string;
+  designation?: string;
+  is_active?: number;
+  must_change_password?: number;
+  last_login_at?: string;
+  role_id?: number | null;
+  role_name?: string;
+  permissions?: string[];
   created_at: string;
+}
+
+export interface Role {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  is_system_role: number;
+  users_count?: number;
+  permissions_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Permission {
+  id: number;
+  module: string;
+  action: string;
+  permission_key: string;
+  name: string;
+  description: string;
+}
+
+export interface UserPermissionOverride {
+  id?: number;
+  user_id: number;
+  permission_id: number;
+  permission_key?: string;
+  override_type: 'grant' | 'revoke';
+  created_at?: string;
+}
+
+export interface AuditLog {
+  id: number;
+  user_id?: number | null;
+  user_name: string;
+  action: string;
+  module: string;
+  details: string;
+  target_type?: string;
+  target_id?: string;
+  ip_address?: string;
+  created_at: string;
+}
+
+export interface LoginSession {
+  id: number;
+  user_id: number;
+  user_name?: string;
+  user_email?: string;
+  ip_address?: string;
+  user_agent?: string;
+  login_at: string;
+  last_active_at?: string;
+  is_active: number;
 }
 
 export interface Customer {
@@ -35,6 +98,26 @@ export interface StaffMember {
   department: string;
   title: string;
   phone?: string;
+  is_active: number;
+  must_change_password: number;
+  role_id?: number | null;
+  role_name?: string;
+  role_code?: string;
+  last_login_at?: string;
+  created_at: string;
+}
+
+export interface StaffInvitation {
+  id: number;
+  email: string;
+  name: string;
+  department: string;
+  title: string;
+  phone?: string;
+  invite_token: string;
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+  invited_by?: number | null;
+  expires_at: string;
   created_at: string;
 }
 

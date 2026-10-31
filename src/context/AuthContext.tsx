@@ -1,48 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { User, UserRole } from '../types';
+import type { User } from '../types';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  switchPersona: (role: UserRole) => void;
   register: (data: any) => Promise<{ success: boolean; error?: string }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; message?: string; resetLink?: string; error?: string }>;
   resetPassword: (email: string, token: string, newPass: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  changePassword: (oldPass: string, newPass: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  refreshCurrentUser: () => Promise<void>;
+  hasPermission: (permissionKey: string) => boolean;
+  hasAnyPermission: (keys: string[]) => boolean;
 }
-
-const DEMO_USERS: Record<UserRole, User> = {
-  admin: {
-    id: 1,
-    name: 'Sarah Connor',
-    email: 'admin@brightloop.com',
-    role: 'admin',
-    customer_id: null,
-    company: 'Brightloop Software Inc',
-    created_at: '2026-01-01'
-  },
-  staff: {
-    id: 2,
-    name: 'Alex Morgan',
-    email: 'staff@brightloop.com',
-    role: 'staff',
-    customer_id: null,
-    company: 'Brightloop Software Inc',
-    created_at: '2026-01-05'
-  },
-  customer: {
-    id: 3,
-    name: 'Rajesh Patel',
-    email: 'customer@acme.com',
-    role: 'customer',
-    customer_id: 1,
-    company: 'Acme Technologies Ltd',
-    phone: '+91 98765 43210',
-    gst_number: '29ABCDE1234F1Z5',
-    created_at: '2026-01-10'
-  }
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -69,12 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
-  const switchPersona = (role: UserRole) => {
-    const demo = DEMO_USERS[role];
-    setUser(demo);
-  };
-
-  const login = async (email: string, password = 'Brightloop@2026') => {
+  const login = async (email: string, password: string) => {
     setLoading(true);
     try {
       const res = await fetch('/api/auth/login', {
@@ -156,8 +122,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const changePassword = async (oldPass: string, newPass: string) => {
+    if (!user) return { success: false, error: 'User is not logged in.' };
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': String(user.id),
+          'x-user-role': user.role,
+          'x-user-name': user.name
+        },
+        body: JSON.stringify({ old_password: oldPass, new_password: newPass })
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      
+      // Clear must_change_password flag on current session
+      setUser(prev => prev ? { ...prev, must_change_password: 0 } : null);
+      return { success: true, message: data.message };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const refreshCurrentUser = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: {
+          'x-user-id': String(user.id),
+          'x-user-role': user.role
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+      }
+    } catch (err) {
+      console.error('Failed to refresh user profile:', err);
+    }
+  };
+
+  const hasPermission = (permissionKey: string): boolean => {
+    if (!user) return false;
+    if (user.is_active === 0) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'customer') return false; // Internal RBAC permissions apply to admin & staff
+    if (!user.permissions || !Array.isArray(user.permissions)) return false;
+    return user.permissions.includes(permissionKey);
+  };
+
+  const hasAnyPermission = (keys: string[]): boolean => {
+    if (!user) return false;
+    if (user.is_active === 0) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'customer') return false;
+    if (!user.permissions || !Array.isArray(user.permissions)) return false;
+    return keys.some(k => user.permissions?.includes(k));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, switchPersona, register, requestPasswordReset, resetPassword }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        register,
+        requestPasswordReset,
+        resetPassword,
+        changePassword,
+        refreshCurrentUser,
+        hasPermission,
+        hasAnyPermission
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

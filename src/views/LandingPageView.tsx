@@ -28,25 +28,15 @@ import { formatCurrency } from '../utils/formatters';
 interface LandingPageViewProps {
   onEnterApp: () => void;
   onOpenAuth: (tab?: 'signin' | 'signup') => void;
-  onQuickLogin?: (email: string) => void;
   isLoggedIn?: boolean;
 }
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({
   onEnterApp,
   onOpenAuth,
-  onQuickLogin,
   isLoggedIn = false
 }) => {
   const [selectedPlanTab, setSelectedPlanTab] = useState<'monthly' | 'yearly'>('monthly');
-
-  const handleDemoLogin = (email: string) => {
-    if (onQuickLogin) {
-      onQuickLogin(email);
-    } else {
-      onOpenAuth('signin');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50/40 via-white to-slate-50 text-slate-900 font-sans selection:bg-indigo-100 selection:text-indigo-900 relative overflow-hidden">
@@ -78,7 +68,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             <a href="#features" className="hover:text-indigo-600 transition-colors">Features</a>
             <a href="#modules" className="hover:text-indigo-600 transition-colors">Modules</a>
             <a href="#pricing" className="hover:text-indigo-600 transition-colors">Pricing</a>
-            <a href="#demo" className="hover:text-indigo-600 transition-colors">1-Click Evaluation</a>
+            <a href="#roles" className="hover:text-indigo-600 transition-colors">Roles &amp; Security</a>
             <a href="#performance" className="hover:text-indigo-600 transition-colors">Performance SLA</a>
           </nav>
 
@@ -150,16 +140,16 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
               onClick={isLoggedIn ? onEnterApp : () => onOpenAuth('signin')}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-full bg-gradient-to-r from-indigo-600 via-violet-600 to-pink-600 hover:from-indigo-700 hover:via-violet-700 hover:to-pink-700 text-white px-7 py-3.5 text-sm font-bold shadow-xl shadow-indigo-500/30 transition-all transform hover:-translate-y-0.5"
             >
-              <span>{isLoggedIn ? 'Enter Live Dashboard' : 'Launch Platform Demo'}</span>
+              <span>{isLoggedIn ? 'Enter Live Dashboard' : 'Sign In to Platform'}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
 
             <a
-              href="#demo"
+              href="#roles"
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-800 px-6 py-3.5 text-sm font-semibold shadow-xs transition-all"
             >
-              <Play className="h-3.5 w-3.5 fill-indigo-600 text-indigo-600" />
-              <span>1-Click Persona Test</span>
+              <ShieldCheck className="h-4 w-4 text-indigo-600" />
+              <span>Role Architecture</span>
             </a>
           </div>
 
@@ -318,19 +308,19 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
       </section>
 
       {/* ======================================================== */}
-      {/* 1-CLICK PERSONA EVALUATION SECTION */}
+      {/* ROLE ARCHITECTURE & ACCESS CONTROL SECTION */}
       {/* ======================================================== */}
-      <section id="demo" className="py-16 sm:py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-indigo-50/30 to-white border-y border-slate-200/80">
+      <section id="roles" className="py-16 sm:py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white via-indigo-50/30 to-white border-y border-slate-200/80">
         <div className="max-w-6xl mx-auto text-center">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-100 text-violet-800 text-xs font-semibold mb-3">
-            <Flame className="h-3.5 w-3.5 text-violet-600" />
-            <span>Interactive Multi-Role Test</span>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-semibold mb-3">
+            <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Role-Based Access Control (RBAC)</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Experience Brightloop as Any User Role
+            Strict Multi-Tier User Access Security
           </h2>
           <p className="mt-3 text-sm sm:text-base text-slate-600 max-w-2xl mx-auto">
-            The problem statement specifies 3 distinct user roles with strict RBAC rules. Test each perspective in 1 click:
+            Brightloop enforces distinct user tiers with dedicated permissions, automated billing, and secure authentication policies:
           </p>
 
           <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-5 text-left">
@@ -342,13 +332,13 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     <ShieldCheck className="h-6 w-6" />
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                    Full Control
+                    Single Dedicated Admin
                   </span>
                 </div>
-                <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition">
-                  👑 Sarah Connor (Admin)
+                <h3 className="text-base font-bold text-slate-900">
+                  Administrator
                 </h3>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">admin@brightloop.com</p>
+                <p className="text-xs text-slate-500 mt-0.5">Full governance over platform settings &amp; staff</p>
                 <ul className="mt-4 space-y-2 text-xs text-slate-600">
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -360,23 +350,26 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Invite &amp; manage internal staff</span>
+                    <span>Generate &amp; manage invite-only staff tokens</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Full financial analytics &amp; audit logs</span>
+                    <span>Full financial analytics &amp; scheduler audit</span>
                   </li>
                 </ul>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('admin@brightloop.com')}
-                className="mt-6 w-full rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white py-2.5 text-xs font-bold shadow-md shadow-orange-600/20 transition flex items-center justify-center gap-1.5"
-              >
-                <span>Login as Admin</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <span className="text-[11px] font-medium text-slate-400 block mb-2">Policy: Single primary admin account</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('signin')}
+                  className="w-full rounded-2xl bg-slate-900 hover:bg-slate-800 text-white py-2.5 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <span>Admin Sign In</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* Persona 2: Staff */}
@@ -387,13 +380,13 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     <Users className="h-6 w-6" />
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                    Operations
+                    Invite Only
                   </span>
                 </div>
-                <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition">
-                  👔 Alex Morgan (Staff)
+                <h3 className="text-base font-bold text-slate-900">
+                  Internal Staff
                 </h3>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">staff@brightloop.com</p>
+                <p className="text-xs text-slate-500 mt-0.5">Operational sales, billing and customer support</p>
                 <ul className="mt-4 space-y-2 text-xs text-slate-600">
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -414,14 +407,17 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                 </ul>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('staff@brightloop.com')}
-                className="mt-6 w-full rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2.5 text-xs font-bold shadow-md shadow-blue-600/20 transition flex items-center justify-center gap-1.5"
-              >
-                <span>Login as Staff</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <span className="text-[11px] font-medium text-slate-400 block mb-2">Requires admin invitation token</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('signup')}
+                  className="w-full rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-2.5 text-xs font-bold border border-indigo-200 transition flex items-center justify-center gap-1.5"
+                >
+                  <span>Redeem Staff Invite</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* Persona 3: Customer */}
@@ -432,13 +428,13 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                     <Building2 className="h-6 w-6" />
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    Client Portal
+                    Open Registration
                   </span>
                 </div>
-                <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition">
-                  👤 Rajesh Patel (Customer)
+                <h3 className="text-base font-bold text-slate-900">
+                  Customer Portal
                 </h3>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">customer@acme.com · Acme Tech</p>
+                <p className="text-xs text-slate-500 mt-0.5">Self-service billing, receipts &amp; active agreements</p>
                 <ul className="mt-4 space-y-2 text-xs text-slate-600">
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -454,19 +450,22 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Self-service billing details management</span>
+                    <span>Direct sign-up without invitation code</span>
                   </li>
                 </ul>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('customer@acme.com')}
-                className="mt-6 w-full rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-2.5 text-xs font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-1.5"
-              >
-                <span>Login as Customer</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <span className="text-[11px] font-medium text-slate-400 block mb-2">Instant customer signup</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('signup')}
+                  className="w-full rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-2.5 text-xs font-bold shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-1.5"
+                >
+                  <span>Register Customer Account</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -805,7 +804,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             Ready to Automate Your Subscription Operations?
           </h2>
           <p className="mt-3 text-sm sm:text-base text-slate-600">
-            Start right now with our 1-click evaluation demo or register your customer profile.
+            Sign in to your account or register your corporate customer profile today.
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -814,16 +813,16 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
               onClick={isLoggedIn ? onEnterApp : () => onOpenAuth('signup')}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-indigo-600 via-violet-600 to-pink-600 hover:from-indigo-700 hover:via-violet-700 hover:to-pink-700 text-white px-8 py-3.5 text-sm font-bold shadow-xl shadow-indigo-500/25 transition transform hover:-translate-y-0.5"
             >
-              <span>{isLoggedIn ? 'Enter Dashboard' : 'Create Free Account'}</span>
+              <span>{isLoggedIn ? 'Enter Dashboard' : 'Register Customer Account'}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
 
             <button
               type="button"
-              onClick={() => handleDemoLogin('admin@brightloop.com')}
+              onClick={() => onOpenAuth('signin')}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 px-6 py-3.5 text-sm font-semibold shadow-xs transition"
             >
-              <span>Launch Admin Evaluation</span>
+              <span>Sign In</span>
             </button>
           </div>
         </div>

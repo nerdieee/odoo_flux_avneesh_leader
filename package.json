@@ -4,9 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "server": "bun run server/index.ts",
+    "server": "bun --watch server/index.ts",
     "client": "vite --port 3000 --host",
-    "dev": "concurrently -n \"API,VITE\" -c \"blue,green\" \"bun run server/index.ts\" \"vite --port 3000 --host\"",
+    "dev": "concurrently -n \"API,VITE\" -c \"blue,green\" \"bun --watch server/index.ts\" \"vite --port 3000 --host\"",
     "build": "vite build",
     "start": "bun run server/index.ts",
     "typecheck": "bun check"
