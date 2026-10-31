@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Invoice } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { Printer, Mail, X, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { Printer, Mail, X, CheckCircle, Clock, AlertTriangle, Download } from 'lucide-react';
 
 interface InvoicePrintModalProps {
   invoice: Invoice | null;
@@ -44,6 +44,16 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                 <span>Send to Customer (Email)</span>
               </button>
             )}
+            <a
+              href={`/api/invoices/${invoice.id}/pdf`}
+              download={`Invoice_${invoice.invoice_number}.pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-stone-200 bg-white text-xs font-medium text-stone-700 hover:border-stone-400 transition cursor-pointer shadow-2xs"
+            >
+              <Download className="h-3.5 w-3.5 text-stone-600" />
+              <span>Download PDF</span>
+            </a>
             <button
                 type="button"
                 onClick={handlePrint}

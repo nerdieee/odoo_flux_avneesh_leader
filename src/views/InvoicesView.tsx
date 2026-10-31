@@ -20,7 +20,8 @@ import {
   Send,
   Loader2,
   Eye,
-  Check
+  Check,
+  Download
 } from 'lucide-react';
 
 export const InvoicesView: React.FC = () => {
@@ -109,6 +110,7 @@ export const InvoicesView: React.FC = () => {
       setEmailResult(data);
       if (data.success) {
         fetchInvoices();
+        alert(`✅ ${data.message}\n\nAttached: Invoice_${emailModalInvoice.invoice_number}.pdf\n\nNote: If not in your primary inbox, please check your Spam or Promotions folder.`);
       }
     } catch (err: any) {
       setEmailResult({
@@ -328,6 +330,17 @@ export const InvoicesView: React.FC = () => {
                             <Printer className="h-3.5 w-3.5" />
                           </button>
 
+                          <a
+                            href={`/api/invoices/${inv.id}/pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            download={`Invoice_${inv.invoice_number}.pdf`}
+                            className="p-1 rounded-md text-stone-500 hover:text-stone-900 hover:bg-stone-100"
+                            title="Download PDF"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+
                           {inv.status === 'draft' && (
                             <button
                               onClick={() => handleConfirmInvoice(inv.id)}
@@ -393,6 +406,7 @@ export const InvoicesView: React.FC = () => {
           invoice={printInvoice}
           onSendEmail={(id) => {
             const inv = invoices.find(i => i.id === id) || printInvoice;
+            setPrintInvoice(null);
             if (inv) openEmailModal(inv);
           }}
         />
@@ -457,6 +471,23 @@ export const InvoicesView: React.FC = () => {
               value={`Invoice #${emailModalInvoice?.invoice_number} from Brightloop Software - ${formatCurrency(emailModalInvoice?.total_amount || 0)}`}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 select-none"
             />
+          </div>
+
+          {/* PDF Attachment Notice */}
+          <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2 text-xs text-indigo-950">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-indigo-600 shrink-0" />
+              <span>Attached: <strong>Invoice_{emailModalInvoice?.invoice_number}.pdf</strong></span>
+            </div>
+            <a
+              href={`/api/invoices/${emailModalInvoice?.id}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-800 underline text-[11px] cursor-pointer"
+            >
+              <Eye className="h-3 w-3" />
+              <span>Preview PDF</span>
+            </a>
           </div>
 
           {/* Execution Result Banner */}

@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
+import { generateInvoicePdf } from './pdfService';
 
 export interface EmailConfig {
   user: string;
@@ -280,12 +281,29 @@ export async function sendInvoiceEmail(invoice: any, lineItems: any[] = [], targ
   });
 
   try {
+    // Generate official vector PDF attachment
+    let pdfBuffer: Buffer | null = null;
+    try {
+      pdfBuffer = await generateInvoicePdf(invoice, lineItems);
+    } catch (pdfErr) {
+      console.warn('[EmailService] Failed to generate PDF buffer, continuing without attachment:', pdfErr);
+    }
+
+    const attachments = pdfBuffer ? [
+      {
+        filename: `Invoice_${invoice.invoice_number}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      }
+    ] : [];
+
     const info = await transporter.sendMail({
       from: `"Brightloop Software" <${config.user}>`,
       to: recipient,
-      subject: `Invoice #${invoice.invoice_number} from Brightloop Software - ${invoice.total_amount ? `₹${invoice.total_amount.toLocaleString('en-IN')}` : ''}`,
-      text: `Hello ${invoice.customer_name || 'Customer'},\n\nPlease find your invoice #${invoice.invoice_number} for the total amount of ₹${invoice.total_amount || 0}.\nDue Date: ${invoice.due_date || 'N/A'}.\n\nThank you,\nBrightloop Software Team`,
+      subject: `Official Tax Invoice #${invoice.invoice_number} - Brightloop Software (Total: ₹${Number(invoice.total_amount || 0).toLocaleString('en-IN')})`,
+      text: `Hello ${invoice.customer_name || 'Customer'},\n\nPlease find attached your official tax invoice #${invoice.invoice_number} from Brightloop Software Private Limited.\n\nTotal Amount: ₹${Number(invoice.total_amount || 0).toLocaleString('en-IN')}\nDue Date: ${invoice.due_date || 'N/A'}\nStatus: ${(invoice.status || 'CONFIRMED').toUpperCase()}\n\nPlease see the attached PDF for full line items, GST breakdown, and bank settlement instructions.\n\nWarm regards,\nBrightloop Software Billing Team`,
       html: htmlContent,
+      attachments,
     });
 
     return {

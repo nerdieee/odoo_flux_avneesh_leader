@@ -3,6 +3,7 @@ import cors from 'cors';
 import { db, initDatabase, hashPassword } from './db';
 import { runRecurringBilling, addBillingPeriod, addPaymentTermDays } from './billingEngine';
 import { sendInvoiceEmail, loadEmailConfig } from './emailService';
+import { generateInvoicePdf } from './pdfService';
 import * as path from 'path';
 
 const app = express();
@@ -1110,6 +1111,40 @@ app.post('/api/invoices/:id/send', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error in send invoice endpoint:', err);
     return res.status(500).json({ error: err.message || 'Failed to dispatch invoice email' });
+  }
+});
+
+app.get('/api/invoices/:id/pdf', async (req: Request, res: Response) => {
+  try {
+    const invoice = db.query(`
+      SELECT i.*, c.email as customer_email, c.name as customer_name,
+             c.company as customer_company, c.address as customer_address,
+             s.subscription_number
+      FROM invoices i
+      JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN subscriptions s ON i.subscription_id = s.id
+      WHERE i.id = ?
+    `).get(req.params.id) as any;
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const lineItems = db.query(`
+      SELECT *
+      FROM invoice_items
+      WHERE invoice_id = ?
+    `).all(req.params.id) as any[];
+
+    const pdfBuffer = await generateInvoicePdf(invoice, lineItems);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Invoice_${invoice.invoice_number}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.end(pdfBuffer);
+  } catch (err: any) {
+    console.error('Error generating PDF:', err);
+    return res.status(500).json({ error: 'Failed to generate PDF document' });
   }
 });
 
