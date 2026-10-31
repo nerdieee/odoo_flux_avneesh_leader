@@ -483,11 +483,15 @@ rbacRouter.post('/staff/:id/reset-password', requirePerm('staff.reset_password')
   });
 });
 
-// DELETE /api/staff/:id - Remove staff account
-rbacRouter.delete('/staff/:id', requirePerm('staff.delete'), (req: Request, res: Response) => {
+// DELETE /api/staff/:id & /api/auth/staff/:id - Remove staff account
+const handleDeleteStaffRoute = (req: Request, res: Response) => {
   const actorId = Number(req.headers['x-user-id'] || 0);
   const actorName = (req.headers['x-user-name'] as string) || 'Administrator';
   const staffId = Number(req.params.id);
+
+  if (!staffId || isNaN(staffId)) {
+    return res.status(400).json({ error: 'Valid staff ID is required.' });
+  }
 
   const staff = (db.query('SELECT * FROM staff WHERE id = ?').get(staffId) ||
                  db.query('SELECT * FROM staff WHERE user_id = ?').get(staffId)) as any;
@@ -500,30 +504,60 @@ rbacRouter.delete('/staff/:id', requirePerm('staff.delete'), (req: Request, res:
     return res.status(403).json({ error: 'Cannot remove administrator accounts.' });
   }
 
-  db.transaction(() => {
-    revokeUserSessions(staff.user_id);
-    db.run('DELETE FROM user_roles WHERE user_id = ?', [staff.user_id]);
-    db.run('DELETE FROM user_permissions WHERE user_id = ?', [staff.user_id]);
-    db.run('DELETE FROM staff WHERE id = ?', [staff.id]);
-    db.run('DELETE FROM users WHERE id = ?', [staff.user_id]);
-    if (staff.email) {
-      db.run("UPDATE staff_invitations SET status = 'revoked' WHERE email = ?", [staff.email]);
-    }
-  })();
+  try {
+    db.transaction(() => {
+      // 1. Revoke and clean up login sessions
+      revokeUserSessions(staff.user_id);
+      db.run('DELETE FROM login_sessions WHERE user_id = ?', [staff.user_id]);
 
-  logAudit(
-    actorId,
-    actorName,
-    'STAFF_DELETE',
-    'Staff Management',
-    `Deleted staff account for ${staff.name} (${staff.email})`,
-    'Staff',
-    String(staff.id),
-    req.ip
-  );
+      // 2. Clear role assignments and permission overrides
+      db.run('DELETE FROM user_roles WHERE user_id = ?', [staff.user_id]);
+      db.run('DELETE FROM user_permissions WHERE user_id = ?', [staff.user_id]);
 
-  return res.json({ success: true, message: `Staff member "${staff.name}" has been removed.` });
-});
+      // 3. Nullify inviter references so foreign key checks don't fail
+      if (staff.user_id) {
+        db.run('UPDATE staff_invitations SET invited_by = NULL WHERE invited_by = ?', [staff.user_id]);
+      }
+
+      // 4. Set audit logs actor to NULL
+      if (staff.user_id) {
+        db.run('UPDATE audit_logs SET actor_user_id = NULL WHERE actor_user_id = ?', [staff.user_id]);
+      }
+
+      // 5. Delete from staff table
+      db.run('DELETE FROM staff WHERE id = ?', [staff.id]);
+
+      // 6. Delete from users table (clears authentication credentials)
+      if (staff.user_id) {
+        db.run('DELETE FROM users WHERE id = ?', [staff.user_id]);
+      }
+
+      // 7. Revoke any pending invitations for this email
+      if (staff.email) {
+        db.run("UPDATE staff_invitations SET status = 'revoked' WHERE email = ?", [staff.email]);
+      }
+    })();
+
+    logAudit(
+      actorId,
+      actorName,
+      'STAFF_DELETE',
+      'Staff Management',
+      `Deleted staff account for ${staff.name} (${staff.email})`,
+      'Staff',
+      String(staff.id),
+      req.ip
+    );
+
+    return res.json({ success: true, message: `Staff member "${staff.name}" has been removed.` });
+  } catch (err: any) {
+    console.error('Failed to remove staff account:', err);
+    return res.status(500).json({ error: 'Failed to delete staff member: ' + (err.message || 'Database error') });
+  }
+};
+
+rbacRouter.delete('/staff/:id', requirePerm('staff.delete'), handleDeleteStaffRoute);
+rbacRouter.delete('/auth/staff/:id', requirePerm('staff.delete'), handleDeleteStaffRoute);
 
 // ----------------------------------------------------------------------
 // 3. DYNAMIC ROLE MANAGEMENT APIS

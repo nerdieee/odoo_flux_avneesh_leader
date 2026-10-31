@@ -73,7 +73,8 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   // Record session
   const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
   const userAgent = req.headers['user-agent'] || 'Web Browser';
-  recordLoginSession(user.id, ip, userAgent);
+  const sessionToken = 'sess_' + crypto.randomBytes(16).toString('hex');
+  recordLoginSession(user.id, sessionToken, ip, userAgent);
 
   // Compute effective permissions
   const permissions = Array.from(getEffectivePermissions(user.id));
@@ -397,60 +398,7 @@ app.get('/api/auth/staff', requirePerm('staff.view'), (req: Request, res: Respon
   return res.json(staff);
 });
 
-// Admin removes a staff account
-app.delete('/api/auth/staff/:id', requirePerm('staff.delete'), (req: Request, res: Response) => {
-  const userRole = (req.headers['x-user-role'] as string) || '';
-  if (userRole && userRole !== 'admin') {
-    return res.status(403).json({ error: 'Access denied. Only administrators can remove staff accounts.' });
-  }
-
-  const id = Number(req.params.id);
-  if (!id || isNaN(id)) {
-    return res.status(400).json({ error: 'Invalid staff ID provided.' });
-  }
-
-  // Look up staff member by staff.id or staff.user_id
-  const staffMember = (db.query(`SELECT * FROM staff WHERE id = ?`).get(id) ||
-                       db.query(`SELECT * FROM staff WHERE user_id = ?`).get(id)) as any;
-
-  if (!staffMember) {
-    return res.status(404).json({ error: 'Staff account not found.' });
-  }
-
-  // Prevent deleting administrator account
-  const userRecord = db.query(`SELECT * FROM users WHERE id = ?`).get(staffMember.user_id) as any;
-  if (userRecord && userRecord.role === 'admin') {
-    return res.status(403).json({ error: 'Cannot remove administrator accounts.' });
-  }
-
-  const deleteStaffTx = db.transaction(() => {
-    // 1. If this staff member was recorded as the inviter of invitations, set invited_by = NULL
-    if (staffMember.user_id) {
-      db.run(`UPDATE staff_invitations SET invited_by = NULL WHERE invited_by = ?`, [staffMember.user_id]);
-    }
-
-    // 2. Mark any related invitation as revoked so it cannot be reused
-    if (staffMember.email) {
-      db.run(`UPDATE staff_invitations SET status = 'revoked' WHERE email = ?`, [staffMember.email]);
-    }
-
-    // 3. Delete from staff table
-    db.run(`DELETE FROM staff WHERE id = ?`, [staffMember.id]);
-
-    // 4. Delete user record (revokes credentials)
-    if (staffMember.user_id) {
-      db.run(`DELETE FROM users WHERE id = ?`, [staffMember.user_id]);
-    }
-  });
-
-  try {
-    deleteStaffTx();
-    return res.json({ success: true, message: `Staff member "${staffMember.name}" has been successfully removed.` });
-  } catch (err: any) {
-    console.error('Failed to remove staff member:', err);
-    return res.status(500).json({ error: 'Failed to remove staff account: ' + err.message });
-  }
-});
+// Note: DELETE /api/staff/:id and /api/auth/staff/:id are handled with full RBAC transaction in rbacRoutes.ts
 
 // Admin deletes an invitation record
 app.delete('/api/auth/invitations/:id', requirePerm('staff.delete'), (req: Request, res: Response) => {

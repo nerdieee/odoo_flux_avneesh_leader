@@ -31,6 +31,7 @@ import {
   Building,
   Briefcase,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   XCircle,
   Sparkles,
@@ -71,6 +72,8 @@ export const StaffView: React.FC = () => {
   const [showCreateStaffModal, setShowCreateStaffModal] = useState(false);
   const [showEditStaffModal, setShowEditStaffModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [staffToDelete, setStaffToDelete] = useState<StaffMember | null>(null);
+  const [isDeletingStaff, setIsDeletingStaff] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetTargetStaff, setResetTargetStaff] = useState<StaffMember | null>(null);
   const [generatedTempPass, setGeneratedTempPass] = useState<string | null>(null);
@@ -355,22 +358,43 @@ export const StaffView: React.FC = () => {
     }
   };
 
-  const handleDeleteStaff = async (staffMember: StaffMember) => {
-    if (!window.confirm(`Permanently remove staff member "${staffMember.name}"?\n\nThis action cannot be undone.`)) return;
+  const handleDeleteStaff = (staffMember: StaffMember) => {
+    setStaffToDelete(staffMember);
+  };
+
+  const confirmDeleteStaff = async () => {
+    if (!staffToDelete) return;
+    setIsDeletingStaff(true);
     try {
-      const res = await fetch(`/api/staff/${staffMember.id}`, {
+      // Attempt deletion via primary and fallback endpoints
+      let res = await fetch(`/api/staff/${staffToDelete.id}`, {
         method: 'DELETE',
         headers: getHeaders()
       });
+
+      if (!res.ok && res.status === 404) {
+        res = await fetch(`/api/auth/staff/${staffToDelete.id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+      }
+
       const data = await res.json();
       if (res.ok) {
-        showFeedbackMsg('success', data.message);
+        showFeedbackMsg('success', data.message || `Staff member "${staffToDelete.name}" removed successfully.`);
+        if (editingStaff?.id === staffToDelete.id) {
+          setShowEditStaffModal(false);
+          setEditingStaff(null);
+        }
+        setStaffToDelete(null);
         refreshAllData();
       } else {
         showFeedbackMsg('error', data.error || 'Failed to delete staff member.');
       }
     } catch (err: any) {
       showFeedbackMsg('error', err.message);
+    } finally {
+      setIsDeletingStaff(false);
     }
   };
 
@@ -1897,22 +1921,89 @@ export const StaffView: React.FC = () => {
               </div>
             </div>
 
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setStaffToDelete(editingStaff);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Remove Account</span>
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditStaffModal(false)}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm cursor-pointer"
+                >
+                  Update Profile
+                </button>
+              </div>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL: DELETE CONFIRMATION */}
+      {/* ==================================================================== */}
+      {staffToDelete && (
+        <Modal
+          isOpen={!!staffToDelete}
+          onClose={() => !isDeletingStaff && setStaffToDelete(null)}
+          title="Remove Staff Account"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+              <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-rose-900 text-sm">Permanent Staff Removal</p>
+                <p className="mt-1">
+                  Are you sure you want to permanently remove <span className="font-bold text-rose-950">{staffToDelete.name}</span> (<span className="font-mono">{staffToDelete.email}</span>)?
+                </p>
+                <p className="mt-1.5 text-rose-700 leading-relaxed">
+                  This action immediately revokes login privileges, terminates all active sessions, removes all assigned roles &amp; individual permission overrides, and safely detaches invitation records.
+                </p>
+              </div>
+            </div>
+
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setShowEditStaffModal(false)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                disabled={isDeletingStaff}
+                onClick={() => setStaffToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                type="submit"
-                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm cursor-pointer"
+                type="button"
+                disabled={isDeletingStaff}
+                onClick={confirmDeleteStaff}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-sm cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
               >
-                Update Profile
+                {isDeletingStaff ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Removing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Confirm Removal</span>
+                  </>
+                )}
               </button>
             </div>
-          </form>
+          </div>
         </Modal>
       )}
 
