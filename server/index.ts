@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { db, initDatabase, hashPassword } from './db';
 import { runRecurringBilling, addBillingPeriod, addPaymentTermDays } from './billingEngine';
+import { sendInvoiceEmail, loadEmailConfig } from './emailService';
 import * as path from 'path';
 
 const app = express();
@@ -1049,20 +1050,67 @@ app.patch('/api/invoices/:id/cancel', (req: Request, res: Response) => {
   return res.json(invoice);
 });
 
-app.post('/api/invoices/:id/send', (req: Request, res: Response) => {
-  const today = new Date().toISOString();
-  db.run(`UPDATE invoices SET sent_at = ? WHERE id = ?`, [today, req.params.id]);
-  const invoice = db.query(`
-    SELECT i.*, c.email as customer_email, c.name as customer_name
-    FROM invoices i
-    JOIN customers c ON i.customer_id = c.id
-    WHERE i.id = ?
-  `).get(req.params.id) as any;
-
+app.get('/api/email-config', (req: Request, res: Response) => {
+  const config = loadEmailConfig();
   return res.json({
-    message: `Invoice ${invoice.invoice_number} sent to ${invoice.customer_email}`,
-    sent_at: today
+    sender_email: config.user,
+    receiver_email: config.receiver,
+    source: config.source,
+    is_configured: Boolean(config.user && config.pass),
   });
+});
+
+app.post('/api/invoices/:id/send', async (req: Request, res: Response) => {
+  try {
+    const invoice = db.query(`
+      SELECT i.*, c.email as customer_email, c.name as customer_name,
+             c.company as customer_company, c.address as customer_address,
+             s.subscription_number
+      FROM invoices i
+      JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN subscriptions s ON i.subscription_id = s.id
+      WHERE i.id = ?
+    `).get(req.params.id) as any;
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const lineItems = db.query(`
+      SELECT *
+      FROM invoice_items
+      WHERE invoice_id = ?
+    `).all(req.params.id) as any[];
+
+    const requestedRecipient = req.body?.recipient_email;
+    const result = await sendInvoiceEmail(invoice, lineItems, requestedRecipient);
+
+    if (result.success) {
+      db.run(`UPDATE invoices SET sent_at = ? WHERE id = ?`, [result.sent_at, req.params.id]);
+      return res.json({
+        success: true,
+        message: result.message,
+        recipient: result.recipient,
+        sender: result.sender,
+        sent_at: result.sent_at,
+        messageId: result.messageId,
+      });
+    } else {
+      // Return 200 with success: false and detailed diagnostic message
+      return res.status(200).json({
+        success: false,
+        message: result.message,
+        error: result.error,
+        recipient: result.recipient,
+        sender: result.sender,
+        source: result.source,
+        htmlPreview: result.htmlPreview,
+      });
+    }
+  } catch (err: any) {
+    console.error('Error in send invoice endpoint:', err);
+    return res.status(500).json({ error: err.message || 'Failed to dispatch invoice email' });
+  }
 });
 
 // ----------------------------------------------------------------------

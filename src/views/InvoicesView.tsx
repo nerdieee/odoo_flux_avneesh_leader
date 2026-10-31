@@ -16,7 +16,11 @@ import {
   Search,
   Filter,
   AlertTriangle,
-  Clock
+  Clock,
+  Send,
+  Loader2,
+  Eye,
+  Check
 } from 'lucide-react';
 
 export const InvoicesView: React.FC = () => {
@@ -27,6 +31,26 @@ export const InvoicesView: React.FC = () => {
 
   // Selected invoice for Print Modal
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+
+  // Email Invoice Modal
+  const [emailModalInvoice, setEmailModalInvoice] = useState<Invoice | null>(null);
+  const [emailRecipient, setEmailRecipient] = useState('yashchharra@gmail.com');
+  const [emailSending, setEmailSending] = useState(false);
+  const [showHtmlPreview, setShowHtmlPreview] = useState(false);
+  const [emailConfig, setEmailConfig] = useState<{
+    sender_email: string;
+    receiver_email: string;
+    source: string;
+    is_configured: boolean;
+  } | null>(null);
+  const [emailResult, setEmailResult] = useState<{
+    success: boolean;
+    message: string;
+    recipient?: string;
+    sender?: string;
+    messageId?: string;
+    htmlPreview?: string;
+  } | null>(null);
 
   // Payment Recording Modal
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
@@ -51,7 +75,50 @@ export const InvoicesView: React.FC = () => {
 
   useEffect(() => {
     fetchInvoices();
+    fetch('/api/email-config')
+      .then(res => res.json())
+      .then(cfg => {
+        setEmailConfig(cfg);
+        if (cfg.receiver_email) {
+          setEmailRecipient(cfg.receiver_email);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const openEmailModal = (inv: Invoice) => {
+    setEmailModalInvoice(inv);
+    setEmailRecipient(emailConfig?.receiver_email || 'yashchharra@gmail.com');
+    setEmailResult(null);
+    setShowHtmlPreview(false);
+  };
+
+  const handleExecuteSendInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailModalInvoice) return;
+
+    setEmailSending(true);
+    setEmailResult(null);
+    try {
+      const res = await fetch(`/api/invoices/${emailModalInvoice.id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient_email: emailRecipient })
+      });
+      const data = await res.json();
+      setEmailResult(data);
+      if (data.success) {
+        fetchInvoices();
+      }
+    } catch (err: any) {
+      setEmailResult({
+        success: false,
+        message: 'Network request to server failed: ' + err.message
+      });
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   const handleConfirmInvoice = async (id: number) => {
     try {
@@ -285,9 +352,9 @@ export const InvoicesView: React.FC = () => {
                           )}
 
                           <button
-                            onClick={() => handleSendInvoice(inv.id)}
-                            className="p-1 rounded-md text-stone-500 hover:text-stone-900 hover:bg-stone-100"
-                            title="Email Invoice"
+                            onClick={() => openEmailModal(inv)}
+                            className="p-1 rounded-md text-stone-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            title="Email Invoice to Customer"
                           >
                             <Mail className="h-3.5 w-3.5" />
                           </button>
@@ -321,11 +388,161 @@ export const InvoicesView: React.FC = () => {
       {/* Print / View Modal */}
       {printInvoice && (
         <InvoicePrintModal
-          isOpen={!!printInvoice}
           onClose={() => setPrintInvoice(null)}
           invoice={printInvoice}
+          onSendEmail={(id) => {
+            const inv = invoices.find(i => i.id === id) || printInvoice;
+            if (inv) openEmailModal(inv);
+          }}
         />
       )}
+
+      {/* Send Invoice to Email Modal */}
+      <Modal
+        isOpen={!!emailModalInvoice}
+        onClose={() => {
+          setEmailModalInvoice(null);
+          setEmailResult(null);
+        }}
+        title={`Send Invoice #${emailModalInvoice?.invoice_number} via Email`}
+        subtitle={`Billing Statement for ${emailModalInvoice?.customer_name} · Total: ${formatCurrency(emailModalInvoice?.total_amount || 0)}`}
+        maxWidth="lg"
+      >
+        <form onSubmit={handleExecuteSendInvoice} className="space-y-4">
+          {/* SMTP Account Details */}
+          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-violet-50/40 p-3.5 text-xs text-indigo-950">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="font-semibold text-indigo-950 flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5 text-indigo-600" />
+                Sender Gmail SMTP Account
+              </span>
+              <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-white/90 border border-indigo-200 text-indigo-700 font-medium">
+                From {emailConfig?.source ? 'Desktop/appid' : 'Config'}
+              </span>
+            </div>
+            <p className="text-[11.5px] text-indigo-900 leading-relaxed">
+              Dispatched from: <strong className="font-mono text-indigo-950">{emailConfig?.sender_email || 'lolkumarold@gmail.com'}</strong>
+            </p>
+          </div>
+
+          {/* Customer / Recipient Email */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Customer / Recipient Email Address *
+            </label>
+            <div className="relative">
+              <input
+                type="email"
+                required
+                value={emailRecipient}
+                onChange={(e) => setEmailRecipient(e.target.value)}
+                placeholder="yashchharra@gmail.com"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-medium text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Default recipient is set to <strong className="font-mono text-indigo-600">yashchharra@gmail.com</strong>
+            </p>
+          </div>
+
+          {/* Subject Preview */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Subject Line Preview
+            </label>
+            <input
+              type="text"
+              disabled
+              value={`Invoice #${emailModalInvoice?.invoice_number} from Brightloop Software - ${formatCurrency(emailModalInvoice?.total_amount || 0)}`}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 select-none"
+            />
+          </div>
+
+          {/* Execution Result Banner */}
+          {emailResult && (
+            <div className={cn(
+              "rounded-xl p-3.5 text-xs border space-y-2",
+              emailResult.success
+                ? "bg-emerald-50 border-emerald-200 text-emerald-950"
+                : "bg-amber-50/90 border-amber-200 text-amber-950"
+            )}>
+              <div className="flex items-start gap-2">
+                {emailResult.success ? (
+                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1">
+                  <p className="font-semibold text-xs">
+                    {emailResult.success ? 'Invoice Email Sent Successfully!' : 'Email Delivery Diagnostic'}
+                  </p>
+                  <p className="text-[11.5px] leading-relaxed">
+                    {emailResult.message}
+                  </p>
+                  {emailResult.messageId && (
+                    <p className="text-[10.5px] font-mono text-emerald-700">
+                      Message ID: {emailResult.messageId}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {emailResult.htmlPreview && (
+                <div className="pt-2 border-t border-amber-200/60">
+                  <button
+                    type="button"
+                    onClick={() => setShowHtmlPreview(!showHtmlPreview)}
+                    className="text-[11px] font-medium text-indigo-700 hover:text-indigo-900 underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Eye className="h-3 w-3" />
+                    {showHtmlPreview ? 'Hide Generated Email HTML Preview' : 'Show Generated Email HTML Preview'}
+                  </button>
+                  {showHtmlPreview && (
+                    <div className="mt-2 p-2 bg-white rounded-lg border border-slate-200 max-h-60 overflow-y-auto">
+                      <iframe
+                        title="Invoice Email Preview"
+                        srcDoc={emailResult.htmlPreview}
+                        className="w-full h-56 border-0"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => {
+                setEmailModalInvoice(null);
+                setEmailResult(null);
+              }}
+              className="rounded-xl px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              disabled={emailSending}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 transition-all cursor-pointer"
+            >
+              {emailSending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Connecting to Gmail SMTP...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Send Invoice via Email</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Record Payment Modal */}
       <Modal

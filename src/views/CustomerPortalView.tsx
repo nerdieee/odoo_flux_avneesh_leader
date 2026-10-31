@@ -41,6 +41,21 @@ export const CustomerPortalView: React.FC = () => {
     }
   };
 
+  const handleEmailInvoice = async (id: number) => {
+    try {
+      const res = await fetch(`/api/invoices/${id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient_email: 'yashchharra@gmail.com' })
+      });
+      const data = await res.json();
+      alert(data.message || 'Invoice email request processed!');
+      fetchCustomerData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchCustomerData();
   }, [user]);
@@ -201,6 +216,7 @@ export const CustomerPortalView: React.FC = () => {
       <InvoicePrintModal
         invoice={printInvoice}
         onClose={() => setPrintInvoice(null)}
+        onSendEmail={handleEmailInvoice}
       />
     </div>
   );
