@@ -23,9 +23,11 @@ export const ProductsView: React.FC = () => {
     setLoading(true);
     try {
       const res = await fetch('/api/products');
-      setProducts(await res.json());
+      const data = await res.json();
+      setProducts(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setProducts([]);
     } finally {
       setLoading(false);
     }

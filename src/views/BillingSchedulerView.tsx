@@ -17,10 +17,14 @@ export const BillingSchedulerView: React.FC = () => {
         fetch('/api/scheduler/logs'),
         fetch('/api/scheduler/upcoming')
       ]);
-      setLogs(await lRes.json());
-      setUpcoming(await uRes.json());
+      const lData = await lRes.json().catch(() => []);
+      const uData = await uRes.json().catch(() => []);
+      setLogs(Array.isArray(lData) ? lData : []);
+      setUpcoming(Array.isArray(uData) ? uData : []);
     } catch (err) {
       console.error(err);
+      setLogs([]);
+      setUpcoming([]);
     }
   };
 

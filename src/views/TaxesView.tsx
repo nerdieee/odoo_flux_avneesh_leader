@@ -20,9 +20,11 @@ export const TaxesView: React.FC = () => {
     setLoading(true);
     try {
       const res = await fetch('/api/taxes');
-      setTaxes(await res.json());
+      const data = await res.json();
+      setTaxes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setTaxes([]);
     } finally {
       setLoading(false);
     }

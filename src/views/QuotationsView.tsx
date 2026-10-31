@@ -46,9 +46,10 @@ export const QuotationsView: React.FC = () => {
     try {
       const res = await fetch('/api/quotations');
       const data = await res.json();
-      setQuotations(data);
+      setQuotations(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setQuotations([]);
     } finally {
       setLoading(false);
     }
@@ -64,12 +65,20 @@ export const QuotationsView: React.FC = () => {
         fetch('/api/discounts'),
         fetch('/api/taxes')
       ]);
-      setTemplates(await tRes.json());
-      setCustomers(await cRes.json());
-      setPlans(await pRes.json());
-      setProducts(await prRes.json());
-      setDiscounts(await dRes.json());
-      setTaxes(await txRes.json());
+      const [tData, cData, pData, prData, dData, txData] = await Promise.all([
+        tRes.json().catch(() => []),
+        cRes.json().catch(() => []),
+        pRes.json().catch(() => []),
+        prRes.json().catch(() => []),
+        dRes.json().catch(() => []),
+        txRes.json().catch(() => [])
+      ]);
+      setTemplates(Array.isArray(tData) ? tData : []);
+      setCustomers(Array.isArray(cData) ? cData : []);
+      setPlans(Array.isArray(pData) ? pData : []);
+      setProducts(Array.isArray(prData) ? prData : []);
+      setDiscounts(Array.isArray(dData) ? dData : []);
+      setTaxes(Array.isArray(txData) ? txData : []);
     } catch (err) {
       console.error(err);
     }

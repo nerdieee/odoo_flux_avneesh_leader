@@ -54,9 +54,10 @@ export const SubscriptionsView: React.FC = () => {
     try {
       const res = await fetch('/api/subscriptions');
       const data = await res.json();
-      setSubscriptions(data);
+      setSubscriptions(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setSubscriptions([]);
     } finally {
       setLoading(false);
     }
@@ -71,11 +72,18 @@ export const SubscriptionsView: React.FC = () => {
         fetch('/api/discounts'),
         fetch('/api/taxes')
       ]);
-      setCustomers(await cRes.json());
-      setPlans(await pRes.json());
-      setProducts(await prRes.json());
-      setDiscounts(await dRes.json());
-      setTaxes(await tRes.json());
+      const [cData, pData, prData, dData, tData] = await Promise.all([
+        cRes.json().catch(() => []),
+        pRes.json().catch(() => []),
+        prRes.json().catch(() => []),
+        dRes.json().catch(() => []),
+        tRes.json().catch(() => [])
+      ]);
+      setCustomers(Array.isArray(cData) ? cData : []);
+      setPlans(Array.isArray(pData) ? pData : []);
+      setProducts(Array.isArray(prData) ? prData : []);
+      setDiscounts(Array.isArray(dData) ? dData : []);
+      setTaxes(Array.isArray(tData) ? tData : []);
     } catch (err) {
       console.error(err);
     }

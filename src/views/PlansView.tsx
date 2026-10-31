@@ -45,11 +45,11 @@ export const PlansView: React.FC = () => {
     setLoading(true);
     try {
       const res = await fetch('/api/plans');
-      if (res.ok) {
-        setPlans(await res.json());
-      }
+      const data = await res.json();
+      setPlans(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setPlans([]);
     } finally {
       setLoading(false);
     }

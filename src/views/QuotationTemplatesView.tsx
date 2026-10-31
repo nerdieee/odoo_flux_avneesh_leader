@@ -26,11 +26,19 @@ export const QuotationTemplatesView: React.FC = () => {
         fetch('/api/plans'),
         fetch('/api/products')
       ]);
-      setTemplates(await tRes.json());
-      setPlans(await pRes.json());
-      setProducts(await prRes.json());
+      const [tData, pData, prData] = await Promise.all([
+        tRes.json().catch(() => []),
+        pRes.json().catch(() => []),
+        prRes.json().catch(() => [])
+      ]);
+      setTemplates(Array.isArray(tData) ? tData : []);
+      setPlans(Array.isArray(pData) ? pData : []);
+      setProducts(Array.isArray(prData) ? prData : []);
     } catch (err) {
       console.error(err);
+      setTemplates([]);
+      setPlans([]);
+      setProducts([]);
     } finally {
       setLoading(false);
     }

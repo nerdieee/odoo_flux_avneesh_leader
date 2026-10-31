@@ -50,10 +50,16 @@ export const DiscountsView: React.FC = () => {
         fetch('/api/discounts'),
         fetch('/api/products')
       ]);
-      setDiscounts(await dRes.json());
-      setProducts(await pRes.json());
+      const [dData, pData] = await Promise.all([
+        dRes.json().catch(() => []),
+        pRes.json().catch(() => [])
+      ]);
+      setDiscounts(Array.isArray(dData) ? dData : []);
+      setProducts(Array.isArray(pData) ? pData : []);
     } catch (err) {
       console.error(err);
+      setDiscounts([]);
+      setProducts([]);
     } finally {
       setLoading(false);
     }

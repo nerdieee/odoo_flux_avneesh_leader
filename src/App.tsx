@@ -48,15 +48,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user, onOpenLandingPa
 
   // Fetch overdue count for badge
   useEffect(() => {
+    if (user.role === 'customer') return;
     fetch('/api/dashboard')
       .then(res => res.json())
       .then(data => {
-        if (data.kpis?.overdueInvoicesCount) {
+        if (data?.kpis?.overdueInvoicesCount) {
           setOverdueCount(data.kpis.overdueInvoicesCount);
         }
       })
-      .catch(console.error);
-  }, [currentTab]);
+      .catch(() => {});
+  }, [currentTab, user.role]);
 
   const renderContent = () => {
     switch (currentTab) {

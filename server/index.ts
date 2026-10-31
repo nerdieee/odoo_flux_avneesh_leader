@@ -1757,7 +1757,7 @@ app.get('/api/scheduler/upcoming', requirePerm('subscriptions.view'), (req: Requ
 // ----------------------------------------------------------------------
 // 11. FINANCE DASHBOARD & REVENUE REPORTS (Performance < 2s Guaranteed)
 // ----------------------------------------------------------------------
-app.get('/api/dashboard', requirePerm('reports.view'), (req: Request, res: Response) => {
+app.get('/api/dashboard', requirePerm('reports.view', true), (req: Request, res: Response) => {
   const startTime = performance.now();
   const today = new Date().toISOString().split('T')[0];
 

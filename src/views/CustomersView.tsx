@@ -25,9 +25,11 @@ export const CustomersView: React.FC = () => {
     setLoading(true);
     try {
       const res = await fetch('/api/customers');
-      setCustomers(await res.json());
+      const data = await res.json();
+      setCustomers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setCustomers([]);
     } finally {
       setLoading(false);
     }

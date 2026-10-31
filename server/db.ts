@@ -334,6 +334,12 @@ export function initDatabase() {
   db.run(`CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_customer_email ON customers(email);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_user_email ON users(email);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions(customer_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments(customer_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_quotations_customer ON quotations(customer_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_products_type ON products(type);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_plans_status ON plans(status);`);
 
   // Initialize RBAC tables & permissions
   initRbacSchema();
