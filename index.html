@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,8 +11,8 @@
       body {
         font-family: 'Inter', ui-sans-system, system-ui, -apple-system, sans-serif;
         font-feature-settings: "cv11", "ss01";
-        background-color: #F8FAFC;
-        color: #0f172a;
+        background-color: var(--background);
+        color: var(--foreground);
         -webkit-font-smoothing: antialiased;
       }
       code, pre, .font-mono {
@@ -45,7 +45,7 @@
       }
     </style>
   </head>
-  <body class="bg-[#F8FAFC] text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 min-h-screen">
+  <body class="bg-background text-foreground antialiased min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

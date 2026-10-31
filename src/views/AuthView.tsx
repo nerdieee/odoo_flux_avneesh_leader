@@ -173,17 +173,24 @@ export const AuthView: React.FC<AuthViewProps> = ({
       )}
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        {/* Brand Logo */}
-        <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 via-violet-600 to-pink-500 shadow-xl shadow-indigo-500/25 text-white mb-3">
-          <Sparkles className="h-6 w-6" />
-        </div>
+        {/* Brand Logo - Click to return to Home Screen */}
+        <button
+          type="button"
+          onClick={onBackToLanding}
+          className="group inline-flex flex-col items-center cursor-pointer transition-transform hover:scale-[1.02] focus:outline-none"
+          title="Return to Home Screen"
+        >
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 via-violet-600 to-pink-500 shadow-xl shadow-indigo-500/25 text-white mb-3 group-hover:shadow-indigo-500/40 transition-shadow">
+            <Sparkles className="h-6 w-6" />
+          </div>
 
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-          Brightloop Software
-        </h1>
-        <p className="mt-1 text-xs text-slate-500">
-          Subscription Management &amp; Recurring Invoicing Platform
-        </p>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl group-hover:text-indigo-600 transition-colors">
+            Brightloop Software
+          </h1>
+          <p className="mt-1 text-xs text-slate-500">
+            Subscription Management &amp; Recurring Invoicing Platform
+          </p>
+        </button>
 
         {/* Tab Selector */}
         <div className="mt-5 flex justify-center">

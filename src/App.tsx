@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './views/DashboardView';
 import { SubscriptionsView } from './views/SubscriptionsView';
@@ -19,6 +18,8 @@ import { CustomerPortalView } from './views/CustomerPortalView';
 import { AuthView } from './views/AuthView';
 import { LandingPageView } from './views/LandingPageView';
 import { InvoicePrintModal } from './components/InvoicePrintModal';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { AppShell } from '@/components/app-shell';
 import type { Invoice, User } from './types';
 
 interface DashboardLayoutProps {
@@ -63,6 +64,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user, onOpenLandingPa
           <DashboardView
             onOpenScheduler={() => setCurrentTab('scheduler')}
             onSelectInvoice={(inv) => setSelectedInvoice(inv)}
+            onNavigateTab={(tab) => setCurrentTab(tab)}
           />
         );
       case 'subscriptions':
@@ -96,44 +98,28 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user, onOpenLandingPa
           <DashboardView
             onOpenScheduler={() => setCurrentTab('scheduler')}
             onSelectInvoice={setSelectedInvoice}
+            onNavigateTab={(tab) => setCurrentTab(tab)}
           />
         );
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans">
-      {/* Top Sticky Header */}
-      <Header
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        onNavigateTab={setCurrentTab}
-        onToggleMobileMenu={() => setMobileMenuOpen(true)}
-        onOpenLandingPage={onOpenLandingPage}
-      />
-
-      {/* Main Body with Sidebar + Content */}
-      <div className="flex w-full flex-1 items-start gap-4 px-3 py-4 sm:px-4 sm:py-6 lg:gap-5 lg:px-6">
-        <Sidebar
-          currentTab={currentTab}
-          setCurrentTab={setCurrentTab}
-          overdueCount={overdueCount}
-          mobileOpen={mobileMenuOpen}
-          onCloseMobile={() => setMobileMenuOpen(false)}
-          onOpenLandingPage={onOpenLandingPage}
-        />
-
-        <main className="min-w-0 flex-1 pb-8">
-          {renderContent()}
-        </main>
-      </div>
+    <AppShell
+      currentTab={currentTab}
+      onSelectTab={setCurrentTab}
+      overdueCount={overdueCount}
+      onOpenScheduler={() => setCurrentTab('scheduler')}
+      onOpenLandingPage={onOpenLandingPage}
+    >
+      {renderContent()}
 
       {/* Modal for Invoice Printing when opened from Dashboard */}
       <InvoicePrintModal
         invoice={selectedInvoice}
         onClose={() => setSelectedInvoice(null)}
       />
-    </div>
+    </AppShell>
   );
 };
 
@@ -189,7 +175,9 @@ const MainApp: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <AuthProvider>
-      <MainApp />
+      <TooltipProvider>
+        <MainApp />
+      </TooltipProvider>
     </AuthProvider>
   );
 };

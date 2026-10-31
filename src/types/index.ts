@@ -286,8 +286,13 @@ export interface DashboardData {
     outstandingAmount: number;
     overdueInvoicesCount: number;
     overdueAmount: number;
+    mrr?: number;
+    collectionRate?: number;
   };
   monthlyRevenue: { month: string; revenue: number }[];
+  dailyRevenue?: { date: string; revenue: number }[];
+  planDistribution?: { category: string; count: number; share: number }[];
+  churnTrend?: { day: string; date: string; returnRate: number }[];
   paymentMethods: { payment_method: string; count: number; total: number }[];
   subscriptionStatus: { status: string; count: number }[];
   recentPayments: any[];

@@ -1,9 +1,52 @@
-import { Database } from 'bun:sqlite';
 import * as crypto from 'crypto';
 import * as path from 'path';
+import { createRequire } from 'module';
 
 const DB_PATH = path.resolve(process.cwd(), 'brightloop_sms.sqlite');
-export const db = new Database(DB_PATH);
+
+function createDbClient() {
+  const require = createRequire(process.cwd() + '/');
+  try {
+    if (typeof (globalThis as any).Bun !== 'undefined') {
+      const { Database } = require('bun:sqlite');
+      return new Database(DB_PATH);
+    }
+  } catch (e) {}
+
+  try {
+    const { DatabaseSync } = require('node:sqlite');
+    const rawDb = new DatabaseSync(DB_PATH);
+    return {
+      run(sql: string, params: any[] = []) {
+        if (!params || params.length === 0) {
+          return rawDb.exec(sql);
+        }
+        return rawDb.prepare(sql).run(...params);
+      },
+      exec(sql: string) {
+        return rawDb.exec(sql);
+      },
+      query(sql: string) {
+        return {
+          get(...params: any[]) {
+            return rawDb.prepare(sql).get(...params);
+          },
+          all(...params: any[]) {
+            return rawDb.prepare(sql).all(...params);
+          },
+          run(...params: any[]) {
+            return rawDb.prepare(sql).run(...params);
+          }
+        };
+      }
+    };
+  } catch (e) {
+    console.error('Failed to initialize SQLite driver:', e);
+    throw e;
+  }
+}
+
+export const db: any = createDbClient();
 
 // Enable WAL mode for high performance and sub-second concurrent reads
 db.run('PRAGMA journal_mode = WAL;');
