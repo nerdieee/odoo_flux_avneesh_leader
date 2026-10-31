@@ -14,7 +14,8 @@ import {
   CheckCircle2,
   Repeat,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  Mail
 } from 'lucide-react';
 
 export const CustomerPortalView: React.FC = () => {
@@ -190,13 +191,23 @@ export const CustomerPortalView: React.FC = () => {
                       {formatCurrency(inv.amount_paid)}
                     </td>
                     <td className="px-3 py-2.5 text-center">
-                      <button
-                        onClick={() => setPrintInvoice(inv)}
-                        className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 hover:border-stone-400 transition-colors shadow-2xs"
-                      >
-                        <Printer className="h-3 w-3" />
-                        <span>View / Print</span>
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => setPrintInvoice(inv)}
+                          className="inline-flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 hover:border-stone-400 transition-colors shadow-2xs"
+                        >
+                          <Printer className="h-3 w-3" />
+                          <span>View / Print</span>
+                        </button>
+                        <button
+                          onClick={() => handleEmailInvoice(inv.id)}
+                          className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs cursor-pointer"
+                          title="Email statement to yashchharra@gmail.com"
+                        >
+                          <Mail className="h-3 w-3 text-indigo-600" />
+                          <span>Email Me</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

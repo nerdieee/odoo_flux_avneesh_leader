@@ -38,16 +38,16 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               <button
                 type="button"
                 onClick={() => onSendEmail(invoice.id)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-stone-200 bg-white text-xs font-medium text-stone-700 hover:border-stone-400 transition cursor-pointer shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 text-xs font-semibold text-white hover:from-indigo-700 hover:to-violet-700 transition cursor-pointer shadow-sm"
               >
-                <Mail className="h-3.5 w-3.5 text-stone-400" />
-                <span>Send to Customer</span>
+                <Mail className="h-3.5 w-3.5 text-white" />
+                <span>Send to Customer (Email)</span>
               </button>
             )}
             <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-stone-900 text-xs font-medium text-white hover:bg-stone-700 transition cursor-pointer shadow-2xs"
+                type="button"
+                onClick={handlePrint}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-stone-900 text-xs font-medium text-white hover:bg-stone-700 transition cursor-pointer shadow-2xs"
             >
               <Printer className="h-3.5 w-3.5" />
               <span>Print Invoice</span>

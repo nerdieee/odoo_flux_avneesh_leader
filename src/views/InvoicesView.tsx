@@ -353,10 +353,11 @@ export const InvoicesView: React.FC = () => {
 
                           <button
                             onClick={() => openEmailModal(inv)}
-                            className="p-1 rounded-md text-stone-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shadow-2xs cursor-pointer"
                             title="Email Invoice to Customer"
                           >
-                            <Mail className="h-3.5 w-3.5" />
+                            <Mail className="h-3.5 w-3.5 text-indigo-600" />
+                            <span>Email</span>
                           </button>
 
                           {inv.status !== 'paid' && inv.status !== 'cancelled' && (
