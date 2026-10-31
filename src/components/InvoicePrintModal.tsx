@@ -1,20 +1,45 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import type { Invoice } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { Printer, Mail, X, CheckCircle, Clock, AlertTriangle, Download } from 'lucide-react';
+import { Printer, Mail, X, CheckCircle, Clock, AlertTriangle, Download, ArrowLeft } from 'lucide-react';
 
 interface InvoicePrintModalProps {
   invoice: Invoice | null;
+  isOpen?: boolean;
   onClose: () => void;
   onSendEmail?: (id: number) => void;
 }
 
 export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   invoice,
+  isOpen = true,
   onClose,
   onSendEmail
 }) => {
-  if (!invoice) return null;
+  // Listen for Escape key to close the modal
+  useEffect(() => {
+    if (!invoice || !isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [invoice, isOpen, onClose]);
+
+  // Lock body scroll when modal is active
+  useEffect(() => {
+    if (invoice && isOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [invoice, isOpen]);
+
+  if (!invoice || !isOpen) return null;
 
   const handlePrint = () => {
     window.print();
@@ -23,15 +48,34 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const balanceDue = Math.max(0, invoice.total_amount - (invoice.amount_paid || 0));
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-      <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200">
-        {/* Top Action Bar (hidden when printing) */}
-        <div className="no-print flex items-center justify-between px-5 py-3 bg-stone-50/80 border-b border-stone-200/80">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-xs text-stone-700">Tax Invoice Document</span>
-            <span className="font-mono text-xs px-2 py-0.5 bg-stone-200/60 rounded text-stone-900">
-              {invoice.invoice_number}
-            </span>
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Tax Invoice Document Preview"
+    >
+      <div
+        className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-stone-200 my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top Sticky Action Bar (hidden when printing) */}
+        <div className="no-print sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3 bg-stone-50/95 backdrop-blur-sm border-b border-stone-200">
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold text-stone-700 hover:bg-stone-100 hover:text-stone-900 transition cursor-pointer shadow-2xs"
+            >
+              <ArrowLeft className="h-4 w-4 text-stone-500" />
+              <span>Back to Invoices</span>
+            </button>
+            <div className="hidden sm:flex items-center gap-2 pl-1 border-l border-stone-200">
+              <span className="font-semibold text-xs text-stone-600">Tax Invoice:</span>
+              <span className="font-mono text-xs px-2 py-0.5 bg-stone-200/70 rounded text-stone-900 font-bold">
+                {invoice.invoice_number}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {onSendEmail && (
@@ -55,9 +99,9 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               <span>Download PDF</span>
             </a>
             <button
-                type="button"
-                onClick={handlePrint}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-stone-900 text-xs font-medium text-white hover:bg-stone-700 transition cursor-pointer shadow-2xs"
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-stone-900 text-xs font-medium text-white hover:bg-stone-700 transition cursor-pointer shadow-2xs"
             >
               <Printer className="h-3.5 w-3.5" />
               <span>Print Invoice</span>
@@ -65,7 +109,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-200 hover:text-stone-700 transition cursor-pointer"
+              title="Close Preview (Esc)"
+              className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-200 hover:text-stone-700 transition cursor-pointer ml-1"
             >
               <X className="h-4 w-4" />
             </button>
@@ -237,6 +282,29 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               <p>{invoice.notes || 'Payment is requested according to agreed billing schedule.'}</p>
               <p className="mt-1 text-stone-400">Inquiries: billing@brightloop.com</p>
             </div>
+          </div>
+        </div>
+
+        {/* Bottom Action Bar (hidden when printing) */}
+        <div className="no-print flex items-center justify-between px-6 py-4 bg-stone-50 border-t border-stone-200">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-stone-700 hover:bg-stone-100 hover:border-stone-300 transition cursor-pointer shadow-2xs"
+          >
+            <ArrowLeft className="h-4 w-4 text-stone-500" />
+            <span>Back to Invoices</span>
+          </button>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-stone-400 hidden sm:inline">Press Esc or click outside to dismiss</span>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-stone-900 text-xs font-semibold text-white hover:bg-stone-800 transition cursor-pointer shadow-2xs"
+            >
+              <Printer className="h-4 w-4" />
+              <span>Print Invoice</span>
+            </button>
           </div>
         </div>
       </div>

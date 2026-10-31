@@ -607,7 +607,9 @@ export const SubscriptionsView: React.FC = () => {
               >
                 <option value="">None (Standard)</option>
                 {discounts.map(d => (
-                  <option key={d.id} value={d.id}>{d.code} ({d.value}{d.discount_type === 'percentage' ? '%' : '₹'} off)</option>
+                  <option key={d.id} value={d.id} disabled={d.status !== 'active'}>
+                    {d.code} ({d.value}{d.discount_type === 'percentage' ? '%' : '₹'} off){d.status !== 'active' ? ' — [Disabled]' : ''}
+                  </option>
                 ))}
               </select>
             </div>

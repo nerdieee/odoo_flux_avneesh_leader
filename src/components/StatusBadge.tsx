@@ -24,6 +24,9 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = ''
   } else if (['paused'].includes(s)) {
     styles = 'bg-violet-50 text-violet-700 border-violet-200/90 font-semibold shadow-2xs';
     dotColor = 'bg-violet-500';
+  } else if (['inactive', 'disabled'].includes(s)) {
+    styles = 'bg-stone-100 text-stone-600 border-stone-200 font-semibold shadow-2xs';
+    dotColor = 'bg-stone-400';
   } else if (['closed', 'cancelled', 'rejected', 'expired', 'overdue'].includes(s)) {
     styles = 'bg-rose-50 text-rose-700 border-rose-200/90 font-semibold shadow-2xs';
     dotColor = 'bg-rose-500';

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import type { Payment, Invoice } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { Modal } from '../components/Modal';
@@ -6,6 +7,9 @@ import DashboardCard from '../components/DashboardCard';
 import { CreditCard, Plus, Search, CheckCircle2 } from 'lucide-react';
 
 export const PaymentsView: React.FC = () => {
+  const { user } = useAuth();
+  const isCustomer = user?.role === 'customer';
+
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,12 +27,19 @@ export const PaymentsView: React.FC = () => {
   const fetchPayments = async () => {
     setLoading(true);
     try {
+      const headers: Record<string, string> = {};
+      if (user?.role) headers['x-user-role'] = user.role;
+      if (user?.customer_id) headers['x-customer-id'] = String(user.customer_id);
+
+      const custParam = isCustomer && user?.customer_id ? `?customer_id=${user.customer_id}` : '';
       const [pRes, iRes] = await Promise.all([
-        fetch('/api/payments'),
-        fetch('/api/invoices')
+        fetch(`/api/payments${custParam}`, { headers }),
+        fetch(`/api/invoices${custParam}`, { headers })
       ]);
-      setPayments(await pRes.json());
-      setInvoices(await iRes.json());
+      const pData = await pRes.json();
+      const iData = await iRes.json();
+      setPayments(Array.isArray(pData) ? pData : []);
+      setInvoices(Array.isArray(iData) ? iData : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -38,7 +49,7 @@ export const PaymentsView: React.FC = () => {
 
   useEffect(() => {
     fetchPayments();
-  }, []);
+  }, [user]);
 
   const handleInvoiceSelect = (id: number) => {
     setInvoiceId(id);
@@ -100,22 +111,28 @@ export const PaymentsView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.12em] text-stone-400">Payment settlements</p>
+          <p className="text-[11px] uppercase tracking-[0.12em] text-stone-400">
+            {isCustomer ? 'Account transactions' : 'Payment settlements'}
+          </p>
           <h1 className="mt-1 text-lg font-semibold tracking-tight sm:text-xl text-stone-900">
-            Payment Settlements
+            {isCustomer ? 'My Payment History & Receipts' : 'Payment Settlements'}
           </h1>
           <p className="mt-0.5 text-xs text-stone-500">
-            {payments.length} transactions recorded · link payments to open invoices and track collections
+            {isCustomer
+              ? `${payments.length} settled payment receipts for your subscriptions`
+              : `${payments.length} transactions recorded · link payments to open invoices and track collections`}
           </p>
         </div>
 
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex shrink-0 items-center gap-1.5 rounded-full bg-stone-900 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-stone-800 transition-colors shadow-2xs"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>Record New Payment</span>
-        </button>
+        {!isCustomer && (
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-stone-900 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-stone-800 transition-colors shadow-2xs cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Record New Payment</span>
+          </button>
+        )}
       </div>
 
       {/* Filter and Search */}

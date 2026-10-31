@@ -18,7 +18,8 @@ import {
   LogOut,
   X,
   Play,
-  Sparkles
+  Sparkles,
+  Settings
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -39,7 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   onOpenLandingPage
 }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission, hasAnyPermission } = useAuth();
   const isCustomer = user?.role === 'customer';
   const isAdmin = user?.role === 'admin';
 
@@ -49,23 +50,91 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { tab: 'payments', label: 'Payment History', icon: CreditCard },
   ];
 
-  const adminNav = [
-    { tab: 'dashboard', label: 'Dashboard & Reports', icon: LayoutDashboard },
-    { tab: 'subscriptions', label: 'Subscriptions', icon: Repeat },
-    { tab: 'quotations', label: 'Quotations', icon: FileSpreadsheet },
-    { tab: 'quotation-templates', label: 'Quotation Templates', icon: FolderOpen },
-    { tab: 'invoices', label: 'Invoices', icon: FileText, badge: overdueCount > 0 ? `${overdueCount} due` : undefined },
-    { tab: 'payments', label: 'Payments', icon: CreditCard },
-    { tab: 'scheduler', label: 'Recurring Scheduler', icon: CalendarClock },
-    { tab: 'products', label: 'Products & Variants', icon: Package },
-    { tab: 'plans', label: 'Plans & Frequency', icon: Layers },
-    { tab: 'discounts', label: 'Discount Rules', icon: Percent },
-    { tab: 'taxes', label: 'Tax Rules (GST/VAT)', icon: Receipt },
-    { tab: 'customers', label: 'Customers', icon: Users },
-    ...(isAdmin ? [{ tab: 'staff', label: 'Internal Staff', icon: UserCheck }] : []),
+  const staffOrAdminNav = [
+    {
+      tab: 'dashboard',
+      label: 'Dashboard & Reports',
+      icon: LayoutDashboard,
+      visible: isAdmin || hasAnyPermission(['reports.view', 'reports.export', 'customers.view', 'subscriptions.view', 'invoices.view'])
+    },
+    {
+      tab: 'subscriptions',
+      label: 'Subscriptions',
+      icon: Repeat,
+      visible: isAdmin || hasPermission('subscriptions.view')
+    },
+    {
+      tab: 'quotations',
+      label: 'Quotations',
+      icon: FileSpreadsheet,
+      visible: isAdmin || hasPermission('quotations.view')
+    },
+    {
+      tab: 'quotation-templates',
+      label: 'Quotation Templates',
+      icon: FolderOpen,
+      visible: isAdmin || hasPermission('quotation_templates.view')
+    },
+    {
+      tab: 'invoices',
+      label: 'Invoices',
+      icon: FileText,
+      badge: overdueCount > 0 ? `${overdueCount} due` : undefined,
+      visible: isAdmin || hasPermission('invoices.view')
+    },
+    {
+      tab: 'payments',
+      label: 'Payments',
+      icon: CreditCard,
+      visible: isAdmin || hasPermission('payments.view')
+    },
+    {
+      tab: 'scheduler',
+      label: 'Recurring Scheduler',
+      icon: CalendarClock,
+      visible: isAdmin || hasPermission('subscriptions.view')
+    },
+    {
+      tab: 'products',
+      label: 'Products & Variants',
+      icon: Package,
+      visible: isAdmin || hasPermission('products.view')
+    },
+    {
+      tab: 'plans',
+      label: 'Plans & Frequency',
+      icon: Layers,
+      visible: isAdmin || hasPermission('plans.view')
+    },
+    {
+      tab: 'discounts',
+      label: 'Discount Rules',
+      icon: Percent,
+      visible: isAdmin || hasPermission('discounts.view')
+    },
+    {
+      tab: 'customers',
+      label: 'Customers',
+      icon: Users,
+      visible: isAdmin || hasPermission('customers.view')
+    },
+    {
+      tab: 'staff',
+      label: 'Staff & Access Control',
+      icon: UserCheck,
+      visible: isAdmin || hasAnyPermission(['staff.view', 'staff.manage_roles', 'staff.manage_permissions', 'audit_logs.view', 'login_history.view'])
+    },
+    {
+      tab: 'settings',
+      label: 'Settings',
+      icon: Settings,
+      visible: isAdmin || hasAnyPermission(['taxes.view', 'taxes.edit'])
+    },
   ];
 
-  const navList = isCustomer ? customerNav : adminNav;
+  const navList = isCustomer
+    ? customerNav
+    : staffOrAdminNav.filter((item) => item.visible);
 
   const renderNavContent = () => (
     <>

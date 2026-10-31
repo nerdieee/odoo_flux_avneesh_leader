@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   Sparkles,
@@ -7,7 +7,6 @@ import {
   User as UserIcon,
   Building2,
   Phone,
-  FileText,
   Eye,
   EyeOff,
   AlertCircle,
@@ -16,7 +15,9 @@ import {
   ArrowRight,
   CheckCircle2,
   KeyRound,
-  ArrowLeft
+  ArrowLeft,
+  Ticket,
+  Check
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -31,6 +32,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
 }) => {
   const { login, register, requestPasswordReset, resetPassword } = useAuth();
   const [activeTab, setActiveTab] = useState<'signin' | 'signup' | 'forgot'>(initialTab);
+  const [signupMode, setSignupMode] = useState<'customer' | 'staff'>('customer');
 
   // Sign In State
   const [loginEmail, setLoginEmail] = useState('');
@@ -39,7 +41,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Sign Up State
+  // Sign Up: Common & Customer State
   const [signupName, setSignupName] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
@@ -51,12 +53,68 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [signupError, setSignupError] = useState('');
   const [signupLoading, setSignupLoading] = useState(false);
 
+  // Sign Up: Staff Invite State
+  const [inviteToken, setInviteToken] = useState('');
+  const [inviteVerifying, setInviteVerifying] = useState(false);
+  const [verifiedInvite, setVerifiedInvite] = useState<{
+    id: number;
+    email: string;
+    name: string;
+    department: string;
+    title: string;
+    phone?: string;
+  } | null>(null);
+  const [inviteError, setInviteError] = useState('');
+
   // Forgot Password State
   const [resetEmail, setResetEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [resetStep, setResetStep] = useState<1 | 2>(1);
   const [resetMsg, setResetMsg] = useState<{ text: string; link?: string; isError?: boolean } | null>(null);
+
+  // Check URL hash/query for invite parameter
+  useEffect(() => {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    let token = '';
+
+    const matchHash = hash.match(/invite=([^&]+)/);
+    const matchSearch = search.match(/invite=([^&]+)/);
+    if (matchHash && matchHash[1]) token = decodeURIComponent(matchHash[1]);
+    else if (matchSearch && matchSearch[1]) token = decodeURIComponent(matchSearch[1]);
+
+    if (token) {
+      setActiveTab('signup');
+      setSignupMode('staff');
+      setInviteToken(token);
+      verifyToken(token);
+    }
+  }, []);
+
+  const verifyToken = async (token: string) => {
+    if (!token.trim()) return;
+    setInviteVerifying(true);
+    setInviteError('');
+    try {
+      const res = await fetch(`/api/auth/verify-invite?token=${encodeURIComponent(token.trim())}`);
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        setVerifiedInvite(data.invitation);
+        setSignupName(data.invitation.name);
+        setSignupEmail(data.invitation.email);
+        if (data.invitation.phone) setSignupPhone(data.invitation.phone);
+      } else {
+        setVerifiedInvite(null);
+        setInviteError(data.error || 'Invalid or expired invitation token');
+      }
+    } catch (err: any) {
+      setInviteError(err.message || 'Error verifying invite');
+      setVerifiedInvite(null);
+    } finally {
+      setInviteVerifying(false);
+    }
+  };
 
   // Password rules validation logic
   const passLength = signupPassword.length > 8;
@@ -78,13 +136,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   };
 
-  // Handle Quick Demo Login
-  const handleQuickLogin = (email: string) => {
-    setLoginEmail(email);
-    setLoginPassword('Brightloop@2026');
-    login(email, 'Brightloop@2026');
-  };
-
   // Handle Sign Up
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,15 +152,31 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
 
     setSignupLoading(true);
-    const res = await register({
+
+    // If in staff invite mode, pass invite_token
+    const payload: any = {
       name: signupName,
       email: signupEmail,
-      password: signupPassword,
-      company: signupCompany,
-      phone: signupPhone,
-      address: signupAddress,
-      gst_number: signupGst
-    });
+      password: signupPassword
+    };
+
+    if (signupMode === 'staff') {
+      if (!inviteToken.trim()) {
+        setSignupError('A valid staff invitation token is required.');
+        setSignupLoading(false);
+        return;
+      }
+      payload.invite_token = inviteToken.trim();
+      payload.phone = signupPhone;
+    } else {
+      // Customer registration
+      payload.company = signupCompany;
+      payload.phone = signupPhone;
+      payload.address = signupAddress;
+      payload.gst_number = signupGst;
+    }
+
+    const res = await register(payload);
     setSignupLoading(false);
 
     if (!res.success) {
@@ -195,7 +262,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 setLoginError('');
               }}
               className={cn(
-                'px-5 py-1.5 rounded-full transition-all text-xs font-bold',
+                'px-5 py-1.5 rounded-full transition-all text-xs font-bold cursor-pointer',
                 activeTab === 'signin'
                   ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
                   : 'text-slate-600 hover:text-slate-900'
@@ -210,13 +277,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 setSignupError('');
               }}
               className={cn(
-                'px-5 py-1.5 rounded-full transition-all text-xs font-bold',
+                'px-5 py-1.5 rounded-full transition-all text-xs font-bold cursor-pointer',
                 activeTab === 'signup'
                   ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
                   : 'text-slate-600 hover:text-slate-900'
               )}
             >
-              Create Account
+              Register
             </button>
           </div>
         </div>
@@ -231,7 +298,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             <div className="space-y-5">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Sign in to your account</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Enter your email and password to access the portal</p>
+                <p className="text-xs text-slate-500 mt-0.5">Enter your email and password to access the platform</p>
               </div>
 
               {loginError && (
@@ -267,7 +334,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveTab('forgot')}
-                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
                     >
                       Forgot password?
                     </button>
@@ -285,7 +352,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -295,91 +362,81 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <button
                   type="submit"
                   disabled={loginLoading}
-                  className="w-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 py-2.5 px-4 text-xs font-bold text-white transition-all shadow-md shadow-indigo-500/25 disabled:opacity-50 flex items-center justify-center gap-1.5 mt-2"
+                  className="w-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 py-2.5 px-4 text-xs font-bold text-white transition-all shadow-md shadow-indigo-500/25 disabled:opacity-50 flex items-center justify-center gap-1.5 mt-2 cursor-pointer"
                 >
                   <span>{loginLoading ? 'Signing in…' : 'Sign In'}</span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </form>
 
-              {/* 1-Click Fast Demo Login Buttons */}
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center mb-2.5">
-                  1-Click Instant Evaluation Sign In
+              <div className="pt-3 border-t border-slate-100 text-center">
+                <p className="text-xs text-slate-500">
+                  Don't have an account yet?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('signup')}
+                    className="font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                  >
+                    Register here
+                  </button>
                 </p>
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin@brightloop.com')}
-                    className="w-full flex items-center justify-between p-2.5 rounded-2xl border border-amber-200/80 bg-amber-50/40 hover:bg-amber-100/60 text-left transition text-xs group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-xs">
-                        <ShieldCheck className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <span className="font-bold text-slate-900 block">👑 Sarah Connor (Admin)</span>
-                        <span className="text-[10.5px] text-slate-500 font-mono">admin@brightloop.com · Full Control</span>
-                      </div>
-                    </div>
-                    <span className="text-[11px] text-amber-700 font-bold group-hover:translate-x-0.5 transition">Log in →</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('staff@brightloop.com')}
-                    className="w-full flex items-center justify-between p-2.5 rounded-2xl border border-blue-200/80 bg-blue-50/40 hover:bg-blue-100/60 text-left transition text-xs group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xs">
-                        <UserCheck className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <span className="font-bold text-slate-900 block">👔 Alex Morgan (Staff)</span>
-                        <span className="text-[10.5px] text-slate-500 font-mono">staff@brightloop.com · Operations</span>
-                      </div>
-                    </div>
-                    <span className="text-[11px] text-blue-700 font-bold group-hover:translate-x-0.5 transition">Log in →</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('customer@acme.com')}
-                    className="w-full flex items-center justify-between p-2.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/40 hover:bg-emerald-100/60 text-left transition text-xs group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white shadow-xs">
-                        <Building2 className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <span className="font-bold text-slate-900 block">👤 Rajesh Patel (Customer)</span>
-                        <span className="text-[10.5px] text-slate-500 font-mono">customer@acme.com · Acme Tech</span>
-                      </div>
-                    </div>
-                    <span className="text-[11px] text-emerald-700 font-bold group-hover:translate-x-0.5 transition">Log in →</span>
-                  </button>
-                </div>
               </div>
             </div>
           )}
 
           {/* ======================================================== */}
-          {/* TAB 2: SIGN UP (CUSTOMER REGISTRATION) */}
+          {/* TAB 2: SIGN UP */}
           {/* ======================================================== */}
           {activeTab === 'signup' && (
             <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Create Customer Account</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Register your company profile to access subscription services &amp; tax invoices
-                </p>
+              {/* Account Type Selector Sub-Tab */}
+              <div className="flex rounded-2xl bg-slate-100 p-1 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignupMode('customer');
+                    setSignupError('');
+                  }}
+                  className={cn(
+                    'flex-1 py-1.5 rounded-xl transition text-center cursor-pointer',
+                    signupMode === 'customer'
+                      ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  )}
+                >
+                  Customer Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignupMode('staff');
+                    setSignupError('');
+                  }}
+                  className={cn(
+                    'flex-1 py-1.5 rounded-xl transition text-center cursor-pointer flex items-center justify-center gap-1.5',
+                    signupMode === 'staff'
+                      ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  )}
+                >
+                  <Ticket className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Have a Staff Invite?</span>
+                </button>
               </div>
 
-              {/* Note on RBAC as per PDF requirement */}
-              <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-[11px] text-indigo-900 flex items-start gap-2">
+              {/* Policy Notice */}
+              <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-100 text-[11px] text-indigo-900 flex items-start gap-2">
                 <ShieldCheck className="h-4 w-4 shrink-0 text-indigo-600 mt-0.5" />
                 <span>
-                  <strong>Role policy:</strong> Client accounts register here. Internal Staff accounts can only be invited directly by an Administrator.
+                  {signupMode === 'customer' ? (
+                    <>
+                      <strong>Role Policy:</strong> Standard signup creates Customer portal accounts. Internal staff accounts require an admin invitation code.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Invite Policy:</strong> Internal Staff accounts are invite-only. Please provide the invitation code sent to you by the Administrator.
+                    </>
+                  )}
                 </span>
               </div>
 
@@ -387,6 +444,60 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
                   <span>{signupError}</span>
+                </div>
+              )}
+
+              {/* STAFF INVITE TOKEN VERIFICATION CARD */}
+              {signupMode === 'staff' && (
+                <div className="space-y-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Staff Invitation Code *
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Ticket className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          value={inviteToken}
+                          onChange={(e) => setInviteToken(e.target.value)}
+                          placeholder="e.g. inv_83ab92..."
+                          className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-2.5 py-1.5 text-xs text-slate-900 font-mono focus:border-indigo-600 focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => verifyToken(inviteToken)}
+                        disabled={inviteVerifying || !inviteToken.trim()}
+                        className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                      >
+                        {inviteVerifying ? 'Checking…' : 'Verify'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {inviteError && (
+                    <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium">
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      <span>{inviteError}</span>
+                    </p>
+                  )}
+
+                  {verifiedInvite && (
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                        <Check className="h-4 w-4 text-emerald-600" />
+                        <span>Valid Staff Invitation</span>
+                      </div>
+                      <p className="text-slate-700 font-semibold">{verifiedInvite.name}</p>
+                      <p className="text-slate-500 font-mono text-[11px]">{verifiedInvite.email}</p>
+                      <div className="flex gap-2 text-[10.5px] mt-1 pt-1 border-t border-emerald-200/60 text-slate-600">
+                        <span><strong>Dept:</strong> {verifiedInvite.department}</span>
+                        <span>·</span>
+                        <span><strong>Role:</strong> {verifiedInvite.title}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -408,23 +519,42 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Company Name</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      {signupMode === 'customer' ? 'Company Name' : 'Phone'}
+                    </label>
                     <div className="relative">
-                      <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <input
-                        type="text"
-                        value={signupCompany}
-                        onChange={(e) => setSignupCompany(e.target.value)}
-                        placeholder="Acme Corp"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-8 pr-2.5 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
-                      />
+                      {signupMode === 'customer' ? (
+                        <>
+                          <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                          <input
+                            type="text"
+                            value={signupCompany}
+                            onChange={(e) => setSignupCompany(e.target.value)}
+                            placeholder="Acme Corp"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-8 pr-2.5 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                          <input
+                            type="text"
+                            value={signupPhone}
+                            onChange={(e) => setSignupPhone(e.target.value)}
+                            placeholder="+91 98765 43210"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-8 pr-2.5 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className={signupMode === 'customer' ? "grid grid-cols-2 gap-2.5" : "block"}>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Corporate Email *</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      {signupMode === 'customer' ? 'Corporate Email *' : 'Invited Email Address *'}
+                    </label>
                     <div className="relative">
                       <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                       <input
@@ -438,46 +568,52 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
-                    <div className="relative">
-                      <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  {signupMode === 'customer' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
+                      <div className="relative">
+                        <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          value={signupPhone}
+                          onChange={(e) => setSignupPhone(e.target.value)}
+                          placeholder="+91 98765 43210"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-8 pr-2.5 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {signupMode === 'customer' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN / Tax ID</label>
                       <input
                         type="text"
-                        value={signupPhone}
-                        onChange={(e) => setSignupPhone(e.target.value)}
-                        placeholder="+91 98765 43210"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-8 pr-2.5 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
+                        value={signupGst}
+                        onChange={(e) => setSignupGst(e.target.value.toUpperCase())}
+                        placeholder="29ABCDE1234F1Z5"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs text-slate-900 font-mono focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
                       />
                     </div>
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">GSTIN / Tax ID</label>
-                  <input
-                    type="text"
-                    value={signupGst}
-                    onChange={(e) => setSignupGst(e.target.value.toUpperCase())}
-                    placeholder="29ABCDE1234F1Z5"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs text-slate-900 font-mono focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Billing Address</label>
-                  <input
-                    type="text"
-                    value={signupAddress}
-                    onChange={(e) => setSignupAddress(e.target.value)}
-                    placeholder="Tech Park, Outer Ring Rd, Bengaluru"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Billing Address</label>
+                      <input
+                        type="text"
+                        value={signupAddress}
+                        onChange={(e) => setSignupAddress(e.target.value)}
+                        placeholder="Tech Park, Outer Ring Rd, Bengaluru"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </>
+                )}
 
                 {/* Password Input with Policy Visual Checklist */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Password *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Create Password *</label>
                   <div className="relative">
                     <Lock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                     <input
@@ -490,7 +626,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     />
                   </div>
 
-                  {/* Password Security Checklist as per PDF */}
+                  {/* Password Security Checklist */}
                   <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[10.5px] grid grid-cols-2 gap-1.5">
                     <div className={`flex items-center gap-1.5 ${passLength ? 'text-emerald-700 font-semibold' : 'text-slate-400'}`}>
                       <CheckCircle2 className={`h-3.5 w-3.5 ${passLength ? 'text-emerald-600' : 'text-slate-300'}`} />
@@ -525,10 +661,16 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
                 <button
                   type="submit"
-                  disabled={signupLoading || !isPasswordValid}
-                  className="w-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 py-2.5 px-4 text-xs font-bold text-white transition-all shadow-md shadow-indigo-500/25 disabled:opacity-50 flex items-center justify-center gap-1.5 mt-2"
+                  disabled={signupLoading || !isPasswordValid || (signupMode === 'staff' && !inviteToken.trim())}
+                  className="w-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 py-2.5 px-4 text-xs font-bold text-white transition-all shadow-md shadow-indigo-500/25 disabled:opacity-50 flex items-center justify-center gap-1.5 mt-2 cursor-pointer"
                 >
-                  <span>{signupLoading ? 'Creating Account…' : 'Register Customer Account'}</span>
+                  <span>
+                    {signupLoading
+                      ? 'Creating Account…'
+                      : signupMode === 'staff'
+                      ? 'Accept Invite & Join Staff'
+                      : 'Register Customer Account'}
+                  </span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </form>
@@ -543,7 +685,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Reset Your Password</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Follow the verified email token reset workflow required by the specification
+                  Follow the verified email token reset workflow
                 </p>
               </div>
 
@@ -569,7 +711,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                       required
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="e.g. customer@acme.com"
+                      placeholder="e.g. user@company.com"
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2 text-xs focus:border-indigo-600 focus:bg-white focus:outline-none"
                     />
                   </div>
@@ -578,13 +720,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveTab('signin')}
-                      className="flex-1 rounded-full border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300"
+                      className="flex-1 rounded-full border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300 cursor-pointer"
                     >
                       Back to Sign In
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 rounded-full bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800"
+                      className="flex-1 rounded-full bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800 cursor-pointer"
                     >
                       Send Reset Token
                     </button>
@@ -621,13 +763,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setResetStep(1)}
-                      className="flex-1 rounded-full border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300"
+                      className="flex-1 rounded-full border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300 cursor-pointer"
                     >
                       Back
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 py-2 text-xs font-bold text-white hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/20"
+                      className="flex-1 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 py-2 text-xs font-bold text-white hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/20 cursor-pointer"
                     >
                       Update Password
                     </button>

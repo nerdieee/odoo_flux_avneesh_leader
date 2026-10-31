@@ -4,7 +4,10 @@ import { db, initDatabase, hashPassword } from './db';
 import { runRecurringBilling, addBillingPeriod, addPaymentTermDays } from './billingEngine';
 import { sendInvoiceEmail, loadEmailConfig } from './emailService';
 import { generateInvoicePdf } from './pdfService';
+import { rbacRouter, requirePerm } from './rbacRoutes';
+import { getEffectivePermissions, recordLoginSession, logAudit } from './rbac';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -14,6 +17,9 @@ app.use(express.json());
 
 // Initialize SQLite database and seed initial data
 initDatabase();
+
+// Mount RBAC and Staff Management routes
+app.use('/api', rbacRouter);
 
 // ----------------------------------------------------------------------
 // Password validation helper: > 8 chars, uppercase, lowercase, special char
@@ -47,6 +53,7 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
   const passHash = hashPassword(password);
   const user = db.query(`
     SELECT u.id, u.email, u.name, u.role, u.customer_id, u.created_at,
+           u.is_active, u.must_change_password, u.department, u.designation,
            c.company, c.phone, c.gst_number
     FROM users u
     LEFT JOIN customers c ON u.customer_id = c.id
@@ -57,13 +64,53 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
-  return res.json({ user });
+  if (user.is_active === 0) {
+    return res.status(403).json({ error: 'Your account has been deactivated. Please contact your system administrator.' });
+  }
+
+  // Update last_login_at
+  const now = new Date().toISOString();
+  db.run(`UPDATE users SET last_login_at = ? WHERE id = ?`, [now, user.id]);
+
+  // Record session
+  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+  const userAgent = req.headers['user-agent'] || 'Web Browser';
+  recordLoginSession(user.id, ip, userAgent);
+
+  // Compute effective permissions
+  const permissions = Array.from(getEffectivePermissions(user.id));
+
+  // Get user role information
+  const roleInfo = db.query(`
+    SELECT r.id, r.name, r.code
+    FROM user_roles ur
+    JOIN roles r ON ur.role_id = r.id
+    WHERE ur.user_id = ?
+    LIMIT 1
+  `).get(user.id) as any;
+
+  // Log audit
+  logAudit(user.id, user.name, 'USER_LOGIN', 'Authentication', `User ${user.email} logged in successfully`, 'User', String(user.id), ip);
+
+  return res.json({
+    user: {
+      ...user,
+      role_id: roleInfo?.id || null,
+      role_name: roleInfo?.name || (user.role === 'admin' ? 'Super Admin' : user.role),
+      permissions
+    }
+  });
 });
 
 app.post('/api/auth/register', (req: Request, res: Response) => {
-  const { email, password, name, company, phone, address, gst_number } = req.body;
+  const { email, password, name, company, phone, address, gst_number, invite_token, role } = req.body;
   if (!email || !password || !name) {
     return res.status(400).json({ error: 'Name, email, and password are required' });
+  }
+
+  // Prevent creation of any admin accounts under all circumstances
+  if (role === 'admin' || req.body.isAdmin) {
+    return res.status(403).json({ error: 'Creation of administrator accounts is strictly forbidden. Only one system admin exists.' });
   }
 
   const passCheck = validatePassword(password);
@@ -77,6 +124,73 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'An account with this email already exists.' });
   }
 
+  // Case 1: Staff registration via invite token
+  if (invite_token && invite_token.trim()) {
+    const token = invite_token.trim();
+    const invitation = db.query(`
+      SELECT * FROM staff_invitations
+      WHERE invite_token = ? AND status = 'pending'
+    `).get(token) as any;
+
+    if (!invitation) {
+      return res.status(400).json({ error: 'Invalid or already used staff invitation token.' });
+    }
+
+    if (new Date(invitation.expires_at) < new Date()) {
+      db.run(`UPDATE staff_invitations SET status = 'expired' WHERE id = ?`, [invitation.id]);
+      return res.status(400).json({ error: 'This staff invitation has expired. Please contact the administrator.' });
+    }
+
+    if (cleanEmail !== invitation.email.toLowerCase().trim()) {
+      return res.status(400).json({
+        error: `This invitation was issued for ${invitation.email}. Please register using that email address.`
+      });
+    }
+
+    try {
+      const registerStaffTx = db.transaction(() => {
+        // Create user with role 'staff'
+        const userRes = db.run(`
+          INSERT INTO users (email, password_hash, name, role, customer_id, created_at)
+          VALUES (?, ?, ?, 'staff', NULL, ?)
+        `, [cleanEmail, hashPassword(password), name, new Date().toISOString()]);
+
+        const userId = userRes.lastInsertRowid;
+
+        // Create staff record
+        db.run(`
+          INSERT INTO staff (user_id, name, email, department, title, phone, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [
+          userId,
+          name,
+          cleanEmail,
+          invitation.department || 'Operations',
+          invitation.title || 'Staff Member',
+          phone || invitation.phone || '',
+          new Date().toISOString()
+        ]);
+
+        // Mark invitation as accepted
+        db.run(`UPDATE staff_invitations SET status = 'accepted' WHERE id = ?`, [invitation.id]);
+
+        return {
+          id: userId,
+          email: cleanEmail,
+          name,
+          role: 'staff',
+          customer_id: null
+        };
+      });
+
+      const user = registerStaffTx();
+      return res.json({ user, message: 'Staff account registered successfully from invite.' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Case 2: Public registration without invite -> ONLY creates Customer account
   try {
     const registerTx = db.transaction(() => {
       // 1. Create Customer record
@@ -87,7 +201,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
 
       const customerId = custRes.lastInsertRowid;
 
-      // 2. Create User account with role 'customer'
+      // 2. Create User account with role 'customer' strictly
       const userRes = db.run(`
         INSERT INTO users (email, password_hash, name, role, customer_id, created_at)
         VALUES (?, ?, ?, 'customer', ?, ?)
@@ -103,7 +217,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     });
 
     const user = registerTx();
-    return res.json({ user, message: 'Account registered successfully' });
+    return res.json({ user, message: 'Customer account registered successfully' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -168,49 +282,114 @@ app.post('/api/auth/reset-password', (req: Request, res: Response) => {
   return res.json({ message: 'Password has been reset successfully. You can now log in.' });
 });
 
-// Admin adds staff member
-app.post('/api/auth/invite-staff', (req: Request, res: Response) => {
-  const { email, name, password, department, title, phone } = req.body;
-  if (!email || !name || !password || !department || !title) {
-    return res.status(400).json({ error: 'Name, email, password, department, and title are required' });
-  }
-
-  const passCheck = validatePassword(password);
-  if (!passCheck.valid) {
-    return res.status(400).json({ error: passCheck.message });
+// Admin creates/sends staff invitation (Staff accounts are invite-only)
+app.post('/api/auth/invite-staff', requirePerm('staff.create'), (req: Request, res: Response) => {
+  const { email, name, department, title, phone, invited_by } = req.body;
+  if (!email || !name || !department || !title) {
+    return res.status(400).json({ error: 'Name, email, department, and title are required' });
   }
 
   const cleanEmail = email.toLowerCase().trim();
   const existing = db.query('SELECT id FROM users WHERE email = ?').get(cleanEmail);
   if (existing) {
-    return res.status(400).json({ error: 'User with this email already exists' });
+    return res.status(400).json({ error: 'An active user account with this email already exists' });
   }
 
+  // Revoke any existing pending invites for this email
+  db.run(`UPDATE staff_invitations SET status = 'revoked' WHERE email = ? AND status = 'pending'`, [cleanEmail]);
+
   try {
-    const inviteTx = db.transaction(() => {
-      const userRes = db.run(`
-        INSERT INTO users (email, password_hash, name, role, created_at)
-        VALUES (?, ?, ?, 'staff', ?)
-      `, [cleanEmail, hashPassword(password), name, new Date().toISOString()]);
+    const invite_token = 'inv_' + crypto.randomBytes(12).toString('hex');
+    const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
 
-      const userId = userRes.lastInsertRowid;
+    const resDb = db.run(`
+      INSERT INTO staff_invitations (email, name, department, title, phone, invite_token, status, invited_by, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    `, [cleanEmail, name, department, title, phone || '', invite_token, invited_by || null, expires_at, new Date().toISOString()]);
 
-      db.run(`
-        INSERT INTO staff (user_id, name, email, department, title, phone, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [userId, name, cleanEmail, department, title, phone || '', new Date().toISOString()]);
+    const invitation = {
+      id: resDb.lastInsertRowid,
+      email: cleanEmail,
+      name,
+      department,
+      title,
+      phone: phone || '',
+      invite_token,
+      status: 'pending',
+      expires_at,
+      created_at: new Date().toISOString()
+    };
 
-      return { id: userId, email: cleanEmail, name, role: 'staff', department, title };
+    return res.json({
+      invitation,
+      invite_token,
+      invite_link: `http://localhost:3000/#register?invite=${invite_token}`,
+      message: 'Staff invitation created successfully. Share this invite code/link with the candidate.'
     });
-
-    const staffMember = inviteTx();
-    return res.json({ staffMember, message: 'Staff member added successfully' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/auth/staff', (req: Request, res: Response) => {
+// Admin lists all staff invitations
+app.get('/api/auth/invitations', requirePerm('staff.view'), (req: Request, res: Response) => {
+  const invitations = db.query(`
+    SELECT * FROM staff_invitations
+    ORDER BY id DESC
+  `).all();
+  return res.json(invitations);
+});
+
+// Admin revokes staff invitation
+app.post('/api/auth/invitations/:id/revoke', requirePerm('staff.edit'), (req: Request, res: Response) => {
+  const { id } = req.params;
+  db.run(`UPDATE staff_invitations SET status = 'revoked' WHERE id = ?`, [id]);
+  return res.json({ success: true, message: 'Invitation has been revoked' });
+});
+
+// Verify staff invite token before registration
+app.get('/api/auth/verify-invite', (req: Request, res: Response) => {
+  const token = (req.query.token as string || '').trim();
+  if (!token) {
+    return res.status(400).json({ valid: false, error: 'Invite token is required' });
+  }
+
+  const invitation = db.query(`
+    SELECT * FROM staff_invitations
+    WHERE invite_token = ?
+  `).get(token) as any;
+
+  if (!invitation) {
+    return res.status(404).json({ valid: false, error: 'Invitation not found or invalid' });
+  }
+
+  if (invitation.status !== 'pending') {
+    return res.status(400).json({
+      valid: false,
+      error: `This invitation has already been ${invitation.status}.`
+    });
+  }
+
+  if (new Date(invitation.expires_at) < new Date()) {
+    db.run(`UPDATE staff_invitations SET status = 'expired' WHERE id = ?`, [invitation.id]);
+    return res.status(400).json({ valid: false, error: 'This invitation has expired.' });
+  }
+
+  return res.json({
+    valid: true,
+    invitation: {
+      id: invitation.id,
+      email: invitation.email,
+      name: invitation.name,
+      department: invitation.department,
+      title: invitation.title,
+      phone: invitation.phone,
+      expires_at: invitation.expires_at
+    }
+  });
+});
+
+app.get('/api/auth/staff', requirePerm('staff.view'), (req: Request, res: Response) => {
   const staff = db.query(`
     SELECT s.*, u.created_at as user_created_at
     FROM staff s
@@ -220,10 +399,76 @@ app.get('/api/auth/staff', (req: Request, res: Response) => {
   return res.json(staff);
 });
 
+// Admin removes a staff account
+app.delete('/api/auth/staff/:id', requirePerm('staff.delete'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Only administrators can remove staff accounts.' });
+  }
+
+  const id = Number(req.params.id);
+  if (!id || isNaN(id)) {
+    return res.status(400).json({ error: 'Invalid staff ID provided.' });
+  }
+
+  // Look up staff member by staff.id or staff.user_id
+  const staffMember = (db.query(`SELECT * FROM staff WHERE id = ?`).get(id) ||
+                       db.query(`SELECT * FROM staff WHERE user_id = ?`).get(id)) as any;
+
+  if (!staffMember) {
+    return res.status(404).json({ error: 'Staff account not found.' });
+  }
+
+  // Prevent deleting administrator account
+  const userRecord = db.query(`SELECT * FROM users WHERE id = ?`).get(staffMember.user_id) as any;
+  if (userRecord && userRecord.role === 'admin') {
+    return res.status(403).json({ error: 'Cannot remove administrator accounts.' });
+  }
+
+  const deleteStaffTx = db.transaction(() => {
+    // 1. If this staff member was recorded as the inviter of invitations, set invited_by = NULL
+    if (staffMember.user_id) {
+      db.run(`UPDATE staff_invitations SET invited_by = NULL WHERE invited_by = ?`, [staffMember.user_id]);
+    }
+
+    // 2. Mark any related invitation as revoked so it cannot be reused
+    if (staffMember.email) {
+      db.run(`UPDATE staff_invitations SET status = 'revoked' WHERE email = ?`, [staffMember.email]);
+    }
+
+    // 3. Delete from staff table
+    db.run(`DELETE FROM staff WHERE id = ?`, [staffMember.id]);
+
+    // 4. Delete user record (revokes credentials)
+    if (staffMember.user_id) {
+      db.run(`DELETE FROM users WHERE id = ?`, [staffMember.user_id]);
+    }
+  });
+
+  try {
+    deleteStaffTx();
+    return res.json({ success: true, message: `Staff member "${staffMember.name}" has been successfully removed.` });
+  } catch (err: any) {
+    console.error('Failed to remove staff member:', err);
+    return res.status(500).json({ error: 'Failed to remove staff account: ' + err.message });
+  }
+});
+
+// Admin deletes an invitation record
+app.delete('/api/auth/invitations/:id', requirePerm('staff.delete'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Only administrators can delete invitations.' });
+  }
+  const id = Number(req.params.id);
+  db.run(`DELETE FROM staff_invitations WHERE id = ?`, [id]);
+  return res.json({ success: true, message: 'Invitation deleted successfully.' });
+});
+
 // ----------------------------------------------------------------------
 // 2. CUSTOMERS
 // ----------------------------------------------------------------------
-app.get('/api/customers', (req: Request, res: Response) => {
+app.get('/api/customers', requirePerm('customers.view'), (req: Request, res: Response) => {
   const customers = db.query(`
     SELECT c.*,
       (SELECT COUNT(*) FROM subscriptions s WHERE s.customer_id = c.id AND s.status = 'active') as active_subscriptions_count,
@@ -235,7 +480,7 @@ app.get('/api/customers', (req: Request, res: Response) => {
   return res.json(customers);
 });
 
-app.get('/api/customers/:id', (req: Request, res: Response) => {
+app.get('/api/customers/:id', requirePerm('customers.view'), (req: Request, res: Response) => {
   const customer = db.query('SELECT * FROM customers WHERE id = ?').get(req.params.id) as any;
   if (!customer) return res.status(400).json({ error: 'Customer not found' });
 
@@ -262,7 +507,7 @@ app.get('/api/customers/:id', (req: Request, res: Response) => {
   return res.json({ customer, subscriptions, invoices, payments });
 });
 
-app.post('/api/customers', (req: Request, res: Response) => {
+app.post('/api/customers', requirePerm('customers.create'), (req: Request, res: Response) => {
   const { name, email, phone, company, address, gst_number } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
 
@@ -279,7 +524,7 @@ app.post('/api/customers', (req: Request, res: Response) => {
   }
 });
 
-app.put('/api/customers/:id', (req: Request, res: Response) => {
+app.put('/api/customers/:id', requirePerm('customers.edit'), (req: Request, res: Response) => {
   const { name, email, phone, company, address, gst_number, status } = req.body;
   db.run(`
     UPDATE customers
@@ -294,7 +539,7 @@ app.put('/api/customers/:id', (req: Request, res: Response) => {
 // ----------------------------------------------------------------------
 // 3. PRODUCTS & VARIANTS
 // ----------------------------------------------------------------------
-app.get('/api/products', (req: Request, res: Response) => {
+app.get('/api/products', requirePerm('products.view'), (req: Request, res: Response) => {
   const products = db.query('SELECT * FROM products ORDER BY id ASC').all() as any[];
   const variants = db.query('SELECT * FROM product_variants').all() as any[];
 
@@ -305,7 +550,7 @@ app.get('/api/products', (req: Request, res: Response) => {
   return res.json(result);
 });
 
-app.post('/api/products', (req: Request, res: Response) => {
+app.post('/api/products', requirePerm('products.create'), (req: Request, res: Response) => {
   const { name, type, sales_price, cost_price, notes, variants } = req.body;
   if (!name || sales_price === undefined || cost_price === undefined) {
     return res.status(400).json({ error: 'Name, sales price, and cost price are required' });
@@ -339,7 +584,7 @@ app.post('/api/products', (req: Request, res: Response) => {
   return res.json({ ...newProduct, variants: prodVariants });
 });
 
-app.put('/api/products/:id', (req: Request, res: Response) => {
+app.put('/api/products/:id', requirePerm('products.edit'), (req: Request, res: Response) => {
   const { name, type, sales_price, cost_price, notes, is_active, variants } = req.body;
   const prodId = req.params.id;
 
@@ -372,7 +617,7 @@ app.put('/api/products/:id', (req: Request, res: Response) => {
 // ----------------------------------------------------------------------
 // 4. PLANS
 // ----------------------------------------------------------------------
-app.get('/api/plans', (req: Request, res: Response) => {
+app.get('/api/plans', requirePerm('plans.view'), (req: Request, res: Response) => {
   const plans = db.query(`
     SELECT p.*,
       (SELECT COUNT(*) FROM subscriptions s WHERE s.plan_id = p.id AND s.status = 'active') as active_subscribers_count
@@ -382,7 +627,7 @@ app.get('/api/plans', (req: Request, res: Response) => {
   return res.json(plans);
 });
 
-app.post('/api/plans', (req: Request, res: Response) => {
+app.post('/api/plans', requirePerm('plans.create'), (req: Request, res: Response) => {
   const { name, code, billing_frequency, price, min_quantity, start_date, end_date, description } = req.body;
   if (!name || !code || !billing_frequency || price === undefined) {
     return res.status(400).json({ error: 'Name, code, billing frequency, and price are required' });
@@ -405,7 +650,7 @@ app.post('/api/plans', (req: Request, res: Response) => {
   }
 });
 
-app.patch('/api/plans/:id/status', (req: Request, res: Response) => {
+app.patch('/api/plans/:id/status', requirePerm('plans.edit'), (req: Request, res: Response) => {
   const { status } = req.body; // 'active', 'paused', 'closed'
   if (!['active', 'paused', 'closed'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
@@ -416,15 +661,152 @@ app.patch('/api/plans/:id/status', (req: Request, res: Response) => {
   return res.json(plan);
 });
 
+// Edit / Update pre-existing plan details
+app.put('/api/plans/:id', requirePerm('plans.edit'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin' && userRole !== 'staff') {
+    return res.status(403).json({ error: 'Access denied. Only administrators and staff can edit plans.' });
+  }
+
+  const { name, code, billing_frequency, price, min_quantity, start_date, end_date, description, status } = req.body;
+  if (!name || price === undefined) {
+    return res.status(400).json({ error: 'Plan name and price are required' });
+  }
+
+  const planId = Number(req.params.id);
+  const existing = db.query('SELECT * FROM plans WHERE id = ?').get(planId) as any;
+  if (!existing) {
+    return res.status(404).json({ error: 'Plan not found' });
+  }
+
+  // Check code uniqueness if changing code
+  if (code && code.toUpperCase().trim() !== existing.code) {
+    const codeConflict = db.query('SELECT id FROM plans WHERE code = ? AND id != ?').get(code.toUpperCase().trim(), planId);
+    if (codeConflict) {
+      return res.status(400).json({ error: `Plan code "${code.toUpperCase().trim()}" is already in use by another plan.` });
+    }
+  }
+
+  const cleanCode = code ? code.toUpperCase().trim() : existing.code;
+  const cleanFreq = billing_frequency || existing.billing_frequency;
+  const cleanStatus = status || existing.status;
+
+  try {
+    db.run(`
+      UPDATE plans
+      SET name = ?, code = ?, billing_frequency = ?, price = ?, min_quantity = ?,
+          start_date = ?, end_date = ?, description = ?, status = ?
+      WHERE id = ?
+    `, [
+      name.trim(),
+      cleanCode,
+      cleanFreq,
+      Number(price),
+      Number(min_quantity || 1),
+      start_date || null,
+      end_date || null,
+      description !== undefined ? description : existing.description,
+      cleanStatus,
+      planId
+    ]);
+
+    const updated = db.query(`
+      SELECT p.*,
+        (SELECT COUNT(*) FROM subscriptions s WHERE s.plan_id = p.id AND s.status = 'active') as active_subscribers_count
+      FROM plans p
+      WHERE p.id = ?
+    `).get(planId);
+
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin deletes a plan (if no active subscriptions reference it)
+app.delete('/api/plans/:id', requirePerm('plans.delete'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Only administrators can delete plans.' });
+  }
+
+  const planId = Number(req.params.id);
+  const plan = db.query('SELECT * FROM plans WHERE id = ?').get(planId) as any;
+  if (!plan) {
+    return res.status(404).json({ error: 'Plan not found' });
+  }
+
+  const activeSubs = (db.query('SELECT COUNT(*) as count FROM subscriptions WHERE plan_id = ?').get(planId) as any).count;
+  if (activeSubs > 0) {
+    return res.status(400).json({
+      error: `Cannot delete plan "${plan.name}" because it is currently assigned to ${activeSubs} subscription(s). You can close or pause the plan instead.`
+    });
+  }
+
+  db.run('DELETE FROM plans WHERE id = ?', [planId]);
+  return res.json({ success: true, message: `Plan "${plan.name}" deleted successfully.` });
+});
+
 // ----------------------------------------------------------------------
-// 5. TAX RULES & DISCOUNTS
+// 5. TAX RULES & PLATFORM SETTINGS
 // ----------------------------------------------------------------------
-app.get('/api/taxes', (req: Request, res: Response) => {
+app.get('/api/settings/tax', requirePerm('taxes.view'), (req: Request, res: Response) => {
+  const defaultTax = db.query('SELECT * FROM tax_rules WHERE is_default = 1').get() as any;
+  const allTaxes = db.query('SELECT * FROM tax_rules ORDER BY id ASC').all();
+  return res.json({
+    defaultTax: defaultTax || allTaxes[0] || null,
+    allTaxes
+  });
+});
+
+app.put('/api/settings/tax', requirePerm('taxes.edit'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Only administrators can configure tax settings.' });
+  }
+
+  const { rate, name, description, is_active } = req.body;
+  if (rate === undefined || isNaN(Number(rate))) {
+    return res.status(400).json({ error: 'Valid tax percentage rate is required.' });
+  }
+
+  const numericRate = Math.max(0, Math.min(100, Math.round(Number(rate) * 100) / 100));
+  const taxName = name && String(name).trim() ? String(name).trim() : `GST (${numericRate}%)`;
+  const taxDesc = description !== undefined ? String(description).trim() : 'Standard tax rate applied to invoices and subscriptions';
+  const activeStatus = is_active === undefined ? 1 : (is_active ? 1 : 0);
+
+  const existingDefault = db.query('SELECT * FROM tax_rules WHERE is_default = 1').get() as any;
+
+  if (existingDefault) {
+    db.run(`
+      UPDATE tax_rules
+      SET rate = ?, name = ?, description = ?, is_active = ?
+      WHERE id = ?
+    `, [numericRate, taxName, taxDesc, activeStatus, existingDefault.id]);
+  } else {
+    db.run('UPDATE tax_rules SET is_default = 0');
+    db.run(`
+      INSERT INTO tax_rules (name, rate, type, is_active, is_default, description)
+      VALUES (?, ?, 'percentage', ?, 1, ?)
+    `, [taxName, numericRate, activeStatus, taxDesc]);
+  }
+
+  const updatedDefault = db.query('SELECT * FROM tax_rules WHERE is_default = 1').get() as any;
+  const allTaxes = db.query('SELECT * FROM tax_rules ORDER BY id ASC').all();
+  return res.json({
+    success: true,
+    message: `Tax rate successfully updated to ${numericRate}% (${taxName}).`,
+    defaultTax: updatedDefault,
+    allTaxes
+  });
+});
+
+app.get('/api/taxes', requirePerm('taxes.view'), (req: Request, res: Response) => {
   const taxes = db.query('SELECT * FROM tax_rules ORDER BY id ASC').all();
   return res.json(taxes);
 });
 
-app.post('/api/taxes', (req: Request, res: Response) => {
+app.post('/api/taxes', requirePerm('taxes.create'), (req: Request, res: Response) => {
   const { name, rate, type, is_active, is_default, description } = req.body;
   if (!name || rate === undefined) return res.status(400).json({ error: 'Name and rate are required' });
 
@@ -441,7 +823,7 @@ app.post('/api/taxes', (req: Request, res: Response) => {
   return res.json(newTax);
 });
 
-app.get('/api/discounts', (req: Request, res: Response) => {
+app.get('/api/discounts', requirePerm('discounts.view'), (req: Request, res: Response) => {
   const discounts = db.query(`
     SELECT d.*, p.name as applicable_product_name
     FROM discounts d
@@ -451,7 +833,7 @@ app.get('/api/discounts', (req: Request, res: Response) => {
   return res.json(discounts);
 });
 
-app.post('/api/discounts', (req: Request, res: Response) => {
+app.post('/api/discounts', requirePerm('discounts.create'), (req: Request, res: Response) => {
   const { code, description, discount_type, value, min_amount, min_quantity, start_date, end_date, max_uses, applicable_product_id } = req.body;
   if (!code || !discount_type || value === undefined) {
     return res.status(400).json({ error: 'Code, discount type, and value are required' });
@@ -513,10 +895,77 @@ app.post('/api/discounts/validate', (req: Request, res: Response) => {
   });
 });
 
+// Admin updates discount status (e.g. enable/disable or expire)
+app.patch('/api/discounts/:id/status', requirePerm('discounts.toggle'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Only administrators can modify discount rules.' });
+  }
+
+  const { status } = req.body;
+  if (!['active', 'inactive', 'expired'].includes(status)) {
+    return res.status(400).json({ error: 'Status must be active, inactive, or expired' });
+  }
+
+  const discount = db.query('SELECT * FROM discounts WHERE id = ?').get(req.params.id) as any;
+  if (!discount) {
+    return res.status(404).json({ error: 'Discount rule not found' });
+  }
+
+  db.run('UPDATE discounts SET status = ? WHERE id = ?', [status, req.params.id]);
+  const updated = db.query(`
+    SELECT d.*, p.name as applicable_product_name
+    FROM discounts d
+    LEFT JOIN products p ON d.applicable_product_id = p.id
+    WHERE d.id = ?
+  `).get(req.params.id);
+  return res.json(updated);
+});
+
+// Admin toggles discount rule between active and inactive (disable / enable)
+app.patch('/api/discounts/:id/toggle', requirePerm('discounts.toggle'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Only administrators can disable or enable discounts.' });
+  }
+
+  const discount = db.query('SELECT * FROM discounts WHERE id = ?').get(req.params.id) as any;
+  if (!discount) {
+    return res.status(404).json({ error: 'Discount rule not found' });
+  }
+
+  const newStatus = discount.status === 'active' ? 'inactive' : 'active';
+  db.run('UPDATE discounts SET status = ? WHERE id = ?', [newStatus, req.params.id]);
+  const updated = db.query(`
+    SELECT d.*, p.name as applicable_product_name
+    FROM discounts d
+    LEFT JOIN products p ON d.applicable_product_id = p.id
+    WHERE d.id = ?
+  `).get(req.params.id);
+  return res.json(updated);
+});
+
+// Admin deletes a discount rule
+app.delete('/api/discounts/:id', requirePerm('discounts.delete'), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Only administrators can delete discount rules.' });
+  }
+
+  const discount = db.query('SELECT * FROM discounts WHERE id = ?').get(req.params.id) as any;
+  if (!discount) {
+    return res.status(404).json({ error: 'Discount rule not found' });
+  }
+
+  db.run('DELETE FROM discount_usages WHERE discount_id = ?', [req.params.id]);
+  db.run('DELETE FROM discounts WHERE id = ?', [req.params.id]);
+  return res.json({ success: true, message: `Discount rule "${discount.code}" has been removed.` });
+});
+
 // ----------------------------------------------------------------------
 // 6. QUOTATION TEMPLATES & QUOTATIONS
 // ----------------------------------------------------------------------
-app.get('/api/quotation-templates', (req: Request, res: Response) => {
+app.get('/api/quotation-templates', requirePerm('quotation_templates.view'), (req: Request, res: Response) => {
   const templates = db.query(`
     SELECT qt.*, p.name as plan_name, p.billing_frequency, p.price as plan_price
     FROM quotation_templates qt
@@ -538,7 +987,7 @@ app.get('/api/quotation-templates', (req: Request, res: Response) => {
   return res.json(result);
 });
 
-app.post('/api/quotation-templates', (req: Request, res: Response) => {
+app.post('/api/quotation-templates', requirePerm('quotation_templates.create'), (req: Request, res: Response) => {
   const { name, plan_id, validity_days, notes, items } = req.body;
   if (!name || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Name and items are required' });
@@ -566,7 +1015,7 @@ app.post('/api/quotation-templates', (req: Request, res: Response) => {
   return res.json({ id: newId, message: 'Template created successfully' });
 });
 
-app.get('/api/quotations', (req: Request, res: Response) => {
+app.get('/api/quotations', requirePerm('quotations.view'), (req: Request, res: Response) => {
   const quotations = db.query(`
     SELECT q.*, c.name as customer_name, c.company as customer_company, c.email as customer_email,
            p.name as plan_name, p.billing_frequency, d.code as discount_code, tr.name as tax_rule_name
@@ -592,7 +1041,7 @@ app.get('/api/quotations', (req: Request, res: Response) => {
   return res.json(result);
 });
 
-app.post('/api/quotations', (req: Request, res: Response) => {
+app.post('/api/quotations', requirePerm('quotations.create'), (req: Request, res: Response) => {
   const { customer_id, plan_id, valid_days, discount_id, tax_rule_id, notes, items } = req.body;
   if (!customer_id || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Customer and items are required' });
@@ -671,7 +1120,7 @@ app.post('/api/quotations', (req: Request, res: Response) => {
 });
 
 // Accept quotation -> instantly create Confirmed/Active Subscription!
-app.post('/api/quotations/:id/accept', (req: Request, res: Response) => {
+app.post('/api/quotations/:id/accept', requirePerm('quotations.confirm'), (req: Request, res: Response) => {
   const quoteId = req.params.id;
   const quote = db.query(`
     SELECT q.*, p.billing_frequency, c.name as customer_name
@@ -778,8 +1227,16 @@ app.post('/api/quotations/:id/accept', (req: Request, res: Response) => {
 // ----------------------------------------------------------------------
 // 7. SUBSCRIPTIONS
 // ----------------------------------------------------------------------
-app.get('/api/subscriptions', (req: Request, res: Response) => {
+app.get('/api/subscriptions', requirePerm('subscriptions.view', true), (req: Request, res: Response) => {
   const { status, customer_id } = req.query;
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  const userCustId = (req.headers['x-customer-id'] as string) || '';
+  let targetCustomerId = customer_id as string;
+
+  if (userRole === 'customer') {
+    targetCustomerId = userCustId || (customer_id as string);
+  }
+
   let sql = `
     SELECT s.*, c.name as customer_name, c.company as customer_company, c.email as customer_email,
            p.name as plan_name, p.billing_frequency, d.code as discount_code, tr.name as tax_rule_name
@@ -796,9 +1253,9 @@ app.get('/api/subscriptions', (req: Request, res: Response) => {
     sql += ` AND s.status = ?`;
     params.push(status);
   }
-  if (customer_id) {
+  if (targetCustomerId) {
     sql += ` AND s.customer_id = ?`;
-    params.push(customer_id);
+    params.push(targetCustomerId);
   }
 
   sql += ` ORDER BY s.id DESC`;
@@ -818,7 +1275,10 @@ app.get('/api/subscriptions', (req: Request, res: Response) => {
   return res.json(result);
 });
 
-app.get('/api/subscriptions/:id', (req: Request, res: Response) => {
+app.get('/api/subscriptions/:id', requirePerm('subscriptions.view', true), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  const userCustId = (req.headers['x-customer-id'] as string) || '';
+
   const sub = db.query(`
     SELECT s.*, c.name as customer_name, c.company as customer_company, c.email as customer_email,
            p.name as plan_name, p.billing_frequency, d.code as discount_code, tr.name as tax_rule_name
@@ -831,6 +1291,10 @@ app.get('/api/subscriptions/:id', (req: Request, res: Response) => {
   `).get(req.params.id) as any;
 
   if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+
+  if (userRole === 'customer' && userCustId && String(sub.customer_id) !== String(userCustId)) {
+    return res.status(403).json({ error: 'Access denied: You are only permitted to view your own subscriptions.' });
+  }
 
   const items = db.query(`
     SELECT si.*, pr.name as product_name, pv.variant_name
@@ -847,7 +1311,7 @@ app.get('/api/subscriptions/:id', (req: Request, res: Response) => {
   return res.json({ subscription: sub, items, invoices });
 });
 
-app.post('/api/subscriptions', (req: Request, res: Response) => {
+app.post('/api/subscriptions', requirePerm('subscriptions.create'), (req: Request, res: Response) => {
   const { customer_id, plan_id, payment_terms, discount_id, tax_rule_id, notes, items, start_date } = req.body;
   if (!customer_id || !plan_id || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Customer, plan, and line items are required' });
@@ -928,7 +1392,7 @@ app.post('/api/subscriptions', (req: Request, res: Response) => {
 });
 
 // Subscription Lifecycle Actions: Pause, Resume, Close Early, Renew
-app.patch('/api/subscriptions/:id/status', (req: Request, res: Response) => {
+app.patch('/api/subscriptions/:id/status', requirePerm('subscriptions.edit'), (req: Request, res: Response) => {
   const { status, reason } = req.body;
   const subId = req.params.id;
 
@@ -953,7 +1417,7 @@ app.patch('/api/subscriptions/:id/status', (req: Request, res: Response) => {
   return res.json(updated);
 });
 
-app.post('/api/subscriptions/:id/renew', (req: Request, res: Response) => {
+app.post('/api/subscriptions/:id/renew', requirePerm('subscriptions.renew'), (req: Request, res: Response) => {
   const sub = db.query('SELECT s.*, p.billing_frequency FROM subscriptions s JOIN plans p ON s.plan_id = p.id WHERE s.id = ?').get(req.params.id) as any;
   if (!sub) return res.status(404).json({ error: 'Subscription not found' });
 
@@ -972,9 +1436,17 @@ app.post('/api/subscriptions/:id/renew', (req: Request, res: Response) => {
 // ----------------------------------------------------------------------
 // 8. INVOICES
 // ----------------------------------------------------------------------
-app.get('/api/invoices', (req: Request, res: Response) => {
+app.get('/api/invoices', requirePerm('invoices.view', true), (req: Request, res: Response) => {
   const { status, customer_id, overdue_only } = req.query;
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  const userCustId = (req.headers['x-customer-id'] as string) || '';
   const today = new Date().toISOString().split('T')[0];
+
+  // Tenant security: customer accounts can ONLY view their own invoices
+  let targetCustomerId = customer_id as string;
+  if (userRole === 'customer') {
+    targetCustomerId = userCustId || (customer_id as string);
+  }
 
   let sql = `
     SELECT i.*, c.name as customer_name, c.company as customer_company, c.email as customer_email,
@@ -994,9 +1466,9 @@ app.get('/api/invoices', (req: Request, res: Response) => {
     sql += ` AND i.status = ?`;
     params.push(status);
   }
-  if (customer_id) {
+  if (targetCustomerId) {
     sql += ` AND i.customer_id = ?`;
-    params.push(customer_id);
+    params.push(targetCustomerId);
   }
   if (overdue_only === 'true') {
     sql += ` AND i.status != 'paid' AND i.status != 'cancelled' AND i.due_date < ?`;
@@ -1015,8 +1487,11 @@ app.get('/api/invoices', (req: Request, res: Response) => {
   return res.json(result);
 });
 
-app.get('/api/invoices/:id', (req: Request, res: Response) => {
+app.get('/api/invoices/:id', requirePerm('invoices.view', true), (req: Request, res: Response) => {
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  const userCustId = (req.headers['x-customer-id'] as string) || '';
   const today = new Date().toISOString().split('T')[0];
+
   const invoice = db.query(`
     SELECT i.*, c.name as customer_name, c.company as customer_company, c.email as customer_email,
            c.phone as customer_phone, c.address as customer_address, c.gst_number as customer_gst,
@@ -1033,19 +1508,32 @@ app.get('/api/invoices/:id', (req: Request, res: Response) => {
 
   if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
+  // Tenant security: customer accounts can ONLY view their own invoice
+  if (userRole === 'customer') {
+    if (userCustId && String(invoice.customer_id) !== String(userCustId)) {
+      return res.status(403).json({ error: 'Access denied: You are only permitted to view your own invoices.' });
+    }
+  }
+
   const items = db.query('SELECT * FROM invoice_items WHERE invoice_id = ?').all(req.params.id);
   const payments = db.query('SELECT * FROM payments WHERE invoice_id = ? ORDER BY id DESC').all(req.params.id);
 
   return res.json({ invoice, items, payments });
 });
 
-app.patch('/api/invoices/:id/confirm', (req: Request, res: Response) => {
+app.patch('/api/invoices/:id/confirm', requirePerm('invoices.confirm'), (req: Request, res: Response) => {
+  if (req.headers['x-user-role'] === 'customer') {
+    return res.status(403).json({ error: 'Access denied: Customer accounts cannot confirm draft invoices.' });
+  }
   db.run(`UPDATE invoices SET status = 'confirmed' WHERE id = ? AND status = 'draft'`, [req.params.id]);
   const invoice = db.query('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   return res.json(invoice);
 });
 
-app.patch('/api/invoices/:id/cancel', (req: Request, res: Response) => {
+app.patch('/api/invoices/:id/cancel', requirePerm('invoices.cancel'), (req: Request, res: Response) => {
+  if (req.headers['x-user-role'] === 'customer') {
+    return res.status(403).json({ error: 'Access denied: Customer accounts cannot cancel invoices.' });
+  }
   db.run(`UPDATE invoices SET status = 'cancelled' WHERE id = ? AND status != 'paid'`, [req.params.id]);
   const invoice = db.query('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   return res.json(invoice);
@@ -1151,8 +1639,16 @@ app.get('/api/invoices/:id/pdf', async (req: Request, res: Response) => {
 // ----------------------------------------------------------------------
 // 9. PAYMENTS
 // ----------------------------------------------------------------------
-app.get('/api/payments', (req: Request, res: Response) => {
+app.get('/api/payments', requirePerm('payments.view', true), (req: Request, res: Response) => {
   const { customer_id } = req.query;
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  const userCustId = (req.headers['x-customer-id'] as string) || '';
+
+  let targetCustomerId = customer_id as string;
+  if (userRole === 'customer') {
+    targetCustomerId = userCustId || (customer_id as string);
+  }
+
   let sql = `
     SELECT p.*, i.invoice_number, i.total_amount as invoice_total,
            c.name as customer_name, c.company as customer_company
@@ -1162,9 +1658,9 @@ app.get('/api/payments', (req: Request, res: Response) => {
     WHERE 1=1
   `;
   const params: any[] = [];
-  if (customer_id) {
+  if (targetCustomerId) {
     sql += ` AND p.customer_id = ?`;
-    params.push(customer_id);
+    params.push(targetCustomerId);
   }
   sql += ` ORDER BY p.id DESC`;
 
@@ -1172,7 +1668,7 @@ app.get('/api/payments', (req: Request, res: Response) => {
   return res.json(payments);
 });
 
-app.post('/api/payments', (req: Request, res: Response) => {
+app.post('/api/payments', requirePerm('payments.record'), (req: Request, res: Response) => {
   const { invoice_id, amount, payment_method, payment_date, transaction_ref, notes } = req.body;
   if (!invoice_id || !amount || !payment_method) {
     return res.status(400).json({ error: 'Invoice ID, amount, and payment method are required' });
@@ -1225,7 +1721,7 @@ app.post('/api/payments', (req: Request, res: Response) => {
 // ----------------------------------------------------------------------
 // 10. RECURRING BILLING SCHEDULER (AUTOMATION & SIMULATOR)
 // ----------------------------------------------------------------------
-app.post('/api/scheduler/run', (req: Request, res: Response) => {
+app.post('/api/scheduler/run', requirePerm('subscriptions.edit'), (req: Request, res: Response) => {
   const { targetDate } = req.body;
   try {
     const result = runRecurringBilling(targetDate);
@@ -1235,7 +1731,7 @@ app.post('/api/scheduler/run', (req: Request, res: Response) => {
   }
 });
 
-app.get('/api/scheduler/logs', (req: Request, res: Response) => {
+app.get('/api/scheduler/logs', requirePerm('subscriptions.view'), (req: Request, res: Response) => {
   const logs = db.query('SELECT * FROM scheduler_logs ORDER BY id DESC LIMIT 50').all() as any[];
   const parsed = logs.map(l => ({
     ...l,
@@ -1244,7 +1740,7 @@ app.get('/api/scheduler/logs', (req: Request, res: Response) => {
   return res.json(parsed);
 });
 
-app.get('/api/scheduler/upcoming', (req: Request, res: Response) => {
+app.get('/api/scheduler/upcoming', requirePerm('subscriptions.view'), (req: Request, res: Response) => {
   const upcoming = db.query(`
     SELECT s.id, s.subscription_number, s.next_billing_date, s.status, s.total_amount,
            c.name as customer_name, c.company as customer_company, p.name as plan_name, p.billing_frequency
@@ -1261,7 +1757,7 @@ app.get('/api/scheduler/upcoming', (req: Request, res: Response) => {
 // ----------------------------------------------------------------------
 // 11. FINANCE DASHBOARD & REVENUE REPORTS (Performance < 2s Guaranteed)
 // ----------------------------------------------------------------------
-app.get('/api/dashboard', (req: Request, res: Response) => {
+app.get('/api/dashboard', requirePerm('reports.view'), (req: Request, res: Response) => {
   const startTime = performance.now();
   const today = new Date().toISOString().split('T')[0];
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import type { Invoice } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { StatusBadge } from '../components/StatusBadge';
@@ -25,6 +26,9 @@ import {
 } from 'lucide-react';
 
 export const InvoicesView: React.FC = () => {
+  const { user } = useAuth();
+  const isCustomer = user?.role === 'customer';
+
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -64,9 +68,14 @@ export const InvoicesView: React.FC = () => {
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/invoices');
+      const headers: Record<string, string> = {};
+      if (user?.role) headers['x-user-role'] = user.role;
+      if (user?.customer_id) headers['x-customer-id'] = String(user.customer_id);
+
+      const custParam = isCustomer && user?.customer_id ? `?customer_id=${user.customer_id}` : '';
+      const res = await fetch(`/api/invoices${custParam}`, { headers });
       const data = await res.json();
-      setInvoices(data);
+      setInvoices(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -85,7 +94,7 @@ export const InvoicesView: React.FC = () => {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   const openEmailModal = (inv: Invoice) => {
     setEmailModalInvoice(inv);
@@ -203,12 +212,16 @@ export const InvoicesView: React.FC = () => {
       {/* View Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.12em] text-stone-400">Financial records</p>
+          <p className="text-[11px] uppercase tracking-[0.12em] text-stone-400">
+            {isCustomer ? 'Account statements' : 'Financial records'}
+          </p>
           <h1 className="mt-1 text-lg font-semibold tracking-tight sm:text-xl text-stone-900">
-            Invoices & Billing Statements
+            {isCustomer ? 'My Invoices & Tax Receipts' : 'Invoices & Billing Statements'}
           </h1>
           <p className="mt-0.5 text-xs text-stone-500">
-            {invoices.length} recurring billing records · tax calculations, status tracking & payment ledger
+            {isCustomer
+              ? `${invoices.length} official billing statements for your account · view & print tax invoices`
+              : `${invoices.length} recurring billing records · tax calculations, status tracking & payment ledger`}
           </p>
         </div>
       </div>
@@ -341,7 +354,7 @@ export const InvoicesView: React.FC = () => {
                             <Download className="h-3.5 w-3.5" />
                           </a>
 
-                          {inv.status === 'draft' && (
+                          {!isCustomer && inv.status === 'draft' && (
                             <button
                               onClick={() => handleConfirmInvoice(inv.id)}
                               className="p-1 rounded-md text-stone-500 hover:text-emerald-700 hover:bg-emerald-50"
@@ -351,7 +364,7 @@ export const InvoicesView: React.FC = () => {
                             </button>
                           )}
 
-                          {inv.status === 'confirmed' && (
+                          {!isCustomer && inv.status === 'confirmed' && (
                             <button
                               onClick={() => {
                                 setPaymentInvoice(inv);
@@ -364,23 +377,27 @@ export const InvoicesView: React.FC = () => {
                             </button>
                           )}
 
-                          <button
-                            onClick={() => openEmailModal(inv)}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shadow-2xs cursor-pointer"
-                            title="Email Invoice to Customer"
-                          >
-                            <Mail className="h-3.5 w-3.5 text-indigo-600" />
-                            <span>Email</span>
-                          </button>
+                          {!isCustomer && (
+                            <>
+                              <button
+                                onClick={() => openEmailModal(inv)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shadow-2xs cursor-pointer"
+                                title="Email Invoice to Customer"
+                              >
+                                <Mail className="h-3.5 w-3.5 text-indigo-600" />
+                                <span>Email</span>
+                              </button>
 
-                          {inv.status !== 'paid' && inv.status !== 'cancelled' && (
-                            <button
-                              onClick={() => handleCancelInvoice(inv.id)}
-                              className="p-1 rounded-md text-stone-500 hover:text-rose-700 hover:bg-rose-50"
-                              title="Cancel Invoice"
-                            >
-                              <XCircle className="h-3.5 w-3.5" />
-                            </button>
+                              {inv.status !== 'paid' && inv.status !== 'cancelled' && (
+                                <button
+                                  onClick={() => handleCancelInvoice(inv.id)}
+                                  className="p-1 rounded-md text-stone-500 hover:text-rose-700 hover:bg-rose-50"
+                                  title="Cancel Invoice"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>

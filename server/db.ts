@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 import * as crypto from 'crypto';
 import * as path from 'path';
+import { initRbacSchema } from './rbac';
 
 const DB_PATH = path.resolve(process.cwd(), 'brightloop_sms.sqlite');
 export const db = new Database(DB_PATH);
@@ -307,13 +308,35 @@ export function initDatabase() {
     );
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS staff_invitations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      department TEXT NOT NULL,
+      title TEXT NOT NULL,
+      phone TEXT,
+      invite_token TEXT UNIQUE NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'expired', 'revoked')),
+      invited_by INTEGER REFERENCES users(id),
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+
   // Performance indexes & Idempotency unique constraints
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_single_admin ON users(role) WHERE role = 'admin';`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_staff_inv_token ON staff_invitations(invite_token);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_staff_inv_email ON staff_invitations(email);`);
   db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_cycle_idempotency ON invoices(subscription_id, billing_cycle_start) WHERE subscription_id IS NOT NULL;`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_sub_status_billing ON subscriptions(status, next_billing_date);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_invoice_status_due ON invoices(status, due_date);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_customer_email ON customers(email);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_user_email ON users(email);`);
+
+  // Initialize RBAC tables & permissions
+  initRbacSchema();
 
   // Seed default data if empty
   seedInitialData();
@@ -380,9 +403,12 @@ export function seedInitialData() {
   const defaultPassHash = hashPassword('Brightloop@2026');
 
   db.run(`INSERT INTO users (id, email, password_hash, name, role, customer_id, created_at) VALUES
-    (1, 'admin@brightloop.com', '${defaultPassHash}', 'Sarah Connor', 'admin', NULL, '2026-01-01'),
+    (1, 'admin@brightloop.com', '${defaultPassHash}', 'Administrator', 'admin', NULL, '2026-01-01'),
     (2, 'staff@brightloop.com', '${defaultPassHash}', 'Alex Morgan', 'staff', NULL, '2026-01-05'),
-    (3, 'customer@acme.com', '${defaultPassHash}', 'Rajesh Patel', 'customer', 1, '2026-01-10')
+    (3, 'customer@acme.com', '${defaultPassHash}', 'Rajesh Patel', 'customer', 1, '2026-01-10'),
+    (4, 'ananya@technova.io', '${defaultPassHash}', 'Ananya Sharma', 'customer', 2, '2026-01-15'),
+    (5, 'vikram@zenith.com', '${defaultPassHash}', 'Vikram Malhotra', 'customer', 3, '2026-02-01'),
+    (6, 'meera@innohealth.org', '${defaultPassHash}', 'Dr. Meera Nambiar', 'customer', 4, '2026-02-10')
   `);
 
   // 7. Staff profile
