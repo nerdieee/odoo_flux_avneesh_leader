@@ -17,7 +17,8 @@ import {
   FolderOpen,
   LogOut,
   X,
-  Play
+  Play,
+  Sparkles
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -27,6 +28,7 @@ interface SidebarProps {
   overdueCount?: number;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  onOpenLandingPage?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -34,7 +36,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCurrentTab,
   overdueCount = 0,
   mobileOpen = false,
-  onCloseMobile
+  onCloseMobile,
+  onOpenLandingPage
 }) => {
   const { user, logout } = useAuth();
   const isCustomer = user?.role === 'customer';
@@ -66,7 +69,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const renderNavContent = () => (
     <>
-      <nav className="rounded-2xl border border-stone-200/70 bg-white p-2 shadow-2xs" aria-label="Primary">
+      <nav className="rounded-2xl sm:rounded-3xl border border-slate-200/80 bg-white p-2.5 shadow-sm" aria-label="Primary">
+        {/* Optional Landing Page shortcut */}
+        {onOpenLandingPage && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenLandingPage();
+              onCloseMobile?.();
+            }}
+            className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 transition mb-2 cursor-pointer"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Sparkles className="h-4 w-4 shrink-0 text-indigo-600" />
+              <span className="truncate">View Landing Page</span>
+            </div>
+            <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full font-mono">NEW</span>
+          </button>
+        )}
+
         {navList.map((item) => {
           const isActive = currentTab === item.tab;
           const Icon = item.icon;
@@ -80,14 +101,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onCloseMobile?.();
               }}
               className={cn(
-                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs transition cursor-pointer',
+                'flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs transition cursor-pointer my-0.5',
                 isActive
-                  ? 'bg-stone-900 text-white font-medium'
-                  : 'text-stone-600 hover:bg-stone-50 hover:text-stone-900'
+                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold shadow-md shadow-indigo-500/25'
+                  : 'text-slate-600 hover:bg-indigo-50/70 hover:text-indigo-900 font-medium'
               )}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-white' : 'text-stone-400')} />
+                <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-white' : 'text-slate-400')} />
                 <span className="truncate">{item.label}</span>
               </div>
               {item.badge && (
@@ -105,33 +126,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Live Engine Status Tile (nwis-style active widget) */}
+      {/* Live Engine Status Tile */}
       {!isCustomer && (
         <div
           onClick={() => {
             setCurrentTab('scheduler');
             onCloseMobile?.();
           }}
-          className="mt-3 w-full rounded-2xl border border-stone-200/70 bg-white p-4 text-left hover:border-stone-300 transition shadow-2xs cursor-pointer group"
+          className="mt-3.5 w-full rounded-2xl sm:rounded-3xl border border-indigo-100/90 bg-gradient-to-br from-indigo-50/60 via-white to-violet-50/40 p-4 text-left hover:border-indigo-300 hover:shadow-md transition shadow-2xs cursor-pointer group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10.5px] uppercase tracking-wide text-stone-400">
+            <span className="text-[10.5px] uppercase font-bold tracking-wider text-indigo-700">
               Recurring Engine · Active
             </span>
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <div className="mt-1 text-[13px] font-semibold tabular-nums text-stone-900">
+          <div className="mt-1 text-[13px] font-bold tabular-nums text-slate-900">
             Automated Daily Cycle
           </div>
-          <div className="mt-0.5 text-[11px] tabular-nums text-stone-500">
+          <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">
             Idempotency 100% · Sub-2s SLA
           </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-stone-100">
-            <div className="h-full rounded-full bg-stone-900 transition-all" style={{ width: '92%' }} />
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 transition-all" style={{ width: '92%' }} />
           </div>
-          <div className="mt-2 flex items-center justify-between text-[11px] tabular-nums text-stone-500">
-            <span className="text-stone-400">Next: Nov 1, 2026</span>
-            <span className="font-semibold text-stone-900 group-hover:text-stone-700 inline-flex items-center gap-1">
+          <div className="mt-2 flex items-center justify-between text-[11px] tabular-nums text-slate-500">
+            <span className="text-slate-400">Next: Nov 1, 2026</span>
+            <span className="font-semibold text-indigo-600 group-hover:text-indigo-800 inline-flex items-center gap-1">
               Simulate <Play className="h-2.5 w-2.5 fill-current" />
             </span>
           </div>
@@ -145,14 +166,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           e.stopPropagation();
           logout();
         }}
-        className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-2xl border border-stone-200/80 bg-white text-xs font-semibold text-stone-700 hover:text-stone-900 hover:bg-stone-50 transition shadow-2xs cursor-pointer"
+        className="mt-3.5 w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50/50 transition shadow-2xs cursor-pointer"
       >
-        <LogOut className="h-3.5 w-3.5 text-stone-400" />
+        <LogOut className="h-3.5 w-3.5 text-slate-400" />
         <span>Sign Out</span>
       </button>
 
-      <p className="mt-3 px-1 text-[10.5px] leading-4 text-stone-400">
-        Brightloop SMS · Desktop v2.6 · {isCustomer ? 'Customer Portal' : 'Admin & Staff Platform'}
+      <p className="mt-3 px-1 text-[10.5px] leading-4 text-slate-400 text-center">
+        Brightloop SMS · v2.6 · {isCustomer ? 'Customer Portal' : 'Admin & Staff'}
       </p>
     </>
   );
@@ -160,26 +181,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* Desktop Sticky Aside */}
-      <aside className="sticky top-[72px] hidden max-h-[calc(100vh-88px)] w-56 shrink-0 overflow-y-auto lg:block xl:w-60 select-none">
+      <aside className="sticky top-[76px] hidden max-h-[calc(100vh-92px)] w-56 shrink-0 overflow-y-auto lg:block xl:w-60 select-none">
         {renderNavContent()}
       </aside>
 
-      {/* Mobile Drawer (nwis-style) */}
+      {/* Mobile Drawer */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-50 bg-stone-950/30 backdrop-blur-xs lg:hidden"
+          className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-xs lg:hidden"
           onClick={onCloseMobile}
         >
           <div
-            className="h-full w-72 max-w-[80vw] overflow-y-auto bg-[#FAFAF8] p-4 shadow-2xl"
+            className="h-full w-72 max-w-[80vw] overflow-y-auto bg-slate-50 p-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between px-1">
-              <span className="text-[13px] font-semibold text-stone-900">Brightloop Menu</span>
+              <span className="text-[13px] font-bold text-slate-900">Brightloop Menu</span>
               <button
                 type="button"
                 onClick={onCloseMobile}
-                className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-200"
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200"
                 aria-label="Close menu"
               >
                 <X className="h-4 w-4" />

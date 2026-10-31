@@ -17,14 +17,16 @@ import { CustomersView } from './views/CustomersView';
 import { StaffView } from './views/StaffView';
 import { CustomerPortalView } from './views/CustomerPortalView';
 import { AuthView } from './views/AuthView';
+import { LandingPageView } from './views/LandingPageView';
 import { InvoicePrintModal } from './components/InvoicePrintModal';
 import type { Invoice, User } from './types';
 
 interface DashboardLayoutProps {
   user: User;
+  onOpenLandingPage: () => void;
 }
 
-const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user }) => {
+const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user, onOpenLandingPage }) => {
   const [currentTab, setCurrentTab] = useState<string>(
     user.role === 'customer' ? 'customer-portal' : 'dashboard'
   );
@@ -100,13 +102,14 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8] text-stone-900 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans">
       {/* Top Sticky Header */}
       <Header
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         onNavigateTab={setCurrentTab}
         onToggleMobileMenu={() => setMobileMenuOpen(true)}
+        onOpenLandingPage={onOpenLandingPage}
       />
 
       {/* Main Body with Sidebar + Content */}
@@ -117,6 +120,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user }) => {
           overdueCount={overdueCount}
           mobileOpen={mobileMenuOpen}
           onCloseMobile={() => setMobileMenuOpen(false)}
+          onOpenLandingPage={onOpenLandingPage}
         />
 
         <main className="min-w-0 flex-1 pb-8">
@@ -134,13 +138,52 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ user }) => {
 };
 
 const MainApp: React.FC = () => {
-  const { user } = useAuth();
+  const { user, login } = useAuth();
+  const [guestView, setGuestView] = useState<'landing' | 'auth'>('landing');
+  const [authTab, setAuthTab] = useState<'signin' | 'signup'>('signin');
+  const [showLandingPageLoggedIn, setShowLandingPageLoggedIn] = useState(false);
 
+  // When user is not logged in
   if (!user) {
-    return <AuthView />;
+    if (guestView === 'landing') {
+      return (
+        <LandingPageView
+          onEnterApp={() => setGuestView('auth')}
+          onOpenAuth={(tab) => {
+            setAuthTab(tab || 'signin');
+            setGuestView('auth');
+          }}
+          onQuickLogin={(email) => login(email, 'Brightloop@2026')}
+          isLoggedIn={false}
+        />
+      );
+    }
+
+    return (
+      <AuthView
+        onBackToLanding={() => setGuestView('landing')}
+        initialTab={authTab}
+      />
+    );
   }
 
-  return <DashboardLayout user={user} />;
+  // When user is logged in
+  if (showLandingPageLoggedIn) {
+    return (
+      <LandingPageView
+        onEnterApp={() => setShowLandingPageLoggedIn(false)}
+        onOpenAuth={() => setShowLandingPageLoggedIn(false)}
+        isLoggedIn={true}
+      />
+    );
+  }
+
+  return (
+    <DashboardLayout
+      user={user}
+      onOpenLandingPage={() => setShowLandingPageLoggedIn(true)}
+    />
+  );
 };
 
 export const App: React.FC = () => {
