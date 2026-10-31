@@ -228,6 +228,7 @@ export const StaffView: React.FC = () => {
     fetch(`/api/staff/${selectedOverrideStaffId}/permissions`, { headers: getHeaders() })
       .then((res) => res.json())
       .then((data) => {
+        if (!data || data.error) return;
         setOverrideStaffData(data);
         // Initialize pending overrides map
         const initialOverrides: { [key: string]: 'inherit' | 'grant' | 'revoke' } = {};
@@ -560,7 +561,7 @@ export const StaffView: React.FC = () => {
 
   const calculateEffective = (permKey: string): boolean => {
     if (!overrideStaffData) return false;
-    const roleHasIt = overrideStaffData.role_permissions.includes(permKey);
+    const roleHasIt = Boolean(Array.isArray(overrideStaffData.role_permissions) && overrideStaffData.role_permissions.includes(permKey));
     const override = pendingOverrides[permKey] || 'inherit';
     if (override === 'grant') return true;
     if (override === 'revoke') return false;
@@ -638,8 +639,8 @@ export const StaffView: React.FC = () => {
   // Filtered staff list
   const filteredStaff = staffList.filter((s) => {
     const matchesSearch =
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.email.toLowerCase().includes(searchTerm.toLowerCase());
+      ((s.name || '').toLowerCase().includes(searchTerm.toLowerCase())) ||
+      ((s.email || '').toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesRole = !roleFilter || String(s.role_id) === roleFilter;
     const matchesDept = !deptFilter || s.department === deptFilter;
     const matchesStatus =
@@ -1273,7 +1274,7 @@ export const StaffView: React.FC = () => {
                   {perms.map((p) => {
                     const currentState = pendingOverrides[p.permission_key] || 'inherit';
                     const isEffective = calculateEffective(p.permission_key);
-                    const baseInRole = overrideStaffData?.role_permissions.includes(p.permission_key);
+                    const baseInRole = Boolean(overrideStaffData?.role_permissions?.includes(p.permission_key));
 
                     return (
                       <div

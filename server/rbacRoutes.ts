@@ -186,7 +186,7 @@ rbacRouter.get('/staff', requirePerm('staff.view'), (req: Request, res: Response
   const departmentFilter = (req.query.department as string) || '';
 
   let sql = `
-    SELECT s.id as staff_id, s.user_id, s.name, s.email, s.department, s.title as designation,
+    SELECT s.id, s.id as staff_id, s.user_id, s.name, s.email, s.department, s.title, s.title as designation,
            s.phone, s.created_at, s.status as staff_status,
            u.is_active, u.must_change_password, u.last_login_at,
            r.id as role_id, r.name as role_name, r.code as role_code,
@@ -220,9 +220,11 @@ rbacRouter.get('/staff', requirePerm('staff.view'), (req: Request, res: Response
 
   const staffList = db.query(sql).all(...params) as any[];
 
-  // Attach effective permissions count
+  // Attach effective permissions count and ensure id & title are present
   const enriched = staffList.map(st => ({
     ...st,
+    id: st.id || st.staff_id,
+    title: st.title || st.designation || 'Staff',
     status: st.is_active ? 'active' : 'inactive',
     effective_permissions_count: getEffectivePermissions(st.user_id).size
   }));
@@ -320,7 +322,7 @@ rbacRouter.post('/staff', requirePerm('staff.create'), (req: Request, res: Respo
 rbacRouter.get('/staff/:id', requirePerm('staff.view'), (req: Request, res: Response) => {
   const staffId = Number(req.params.id);
   const staff = db.query(`
-    SELECT s.id as staff_id, s.user_id, s.name, s.email, s.department, s.title as designation,
+    SELECT s.id, s.id as staff_id, s.user_id, s.name, s.email, s.department, s.title, s.title as designation,
            s.phone, s.created_at, s.status as staff_status,
            u.is_active, u.must_change_password, u.last_login_at,
            r.id as role_id, r.name as role_name, r.code as role_code
