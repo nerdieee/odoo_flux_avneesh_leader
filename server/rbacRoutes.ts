@@ -493,6 +493,12 @@ const handleDeleteStaffRoute = (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Valid staff ID is required.' });
   }
 
+  // System Administrator account can never be deleted
+  const directUser = db.query('SELECT * FROM users WHERE id = ?').get(staffId) as any;
+  if (directUser && directUser.role === 'admin') {
+    return res.status(403).json({ error: 'System administrator accounts cannot be deleted.' });
+  }
+
   const staff = (db.query('SELECT * FROM staff WHERE id = ?').get(staffId) ||
                  db.query('SELECT * FROM staff WHERE user_id = ?').get(staffId)) as any;
   if (!staff) {
@@ -501,7 +507,7 @@ const handleDeleteStaffRoute = (req: Request, res: Response) => {
 
   const userRecord = db.query('SELECT * FROM users WHERE id = ?').get(staff.user_id) as any;
   if (userRecord && userRecord.role === 'admin') {
-    return res.status(403).json({ error: 'Cannot remove administrator accounts.' });
+    return res.status(403).json({ error: 'System administrator accounts cannot be deleted.' });
   }
 
   try {

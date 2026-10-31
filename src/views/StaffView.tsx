@@ -901,12 +901,12 @@ export const StaffView: React.FC = () => {
                               <RotateCcw className="h-3.5 w-3.5" />
                             </button>
 
-                            {/* Delete */}
+                            {/* Delete Staff Member */}
                             <button
                               type="button"
                               onClick={() => handleDeleteStaff(member)}
-                              title="Delete Account"
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                              title={`Permanently Remove ${member.name}`}
+                              className="p-1.5 rounded-lg text-rose-500 hover:text-white hover:bg-rose-600 transition cursor-pointer"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -1925,7 +1925,9 @@ export const StaffView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setStaffToDelete(editingStaff);
+                  const target = editingStaff;
+                  setShowEditStaffModal(false);
+                  setStaffToDelete(target);
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition cursor-pointer"
               >
